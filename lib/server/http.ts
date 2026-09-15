@@ -38,6 +38,7 @@ export async function fetchJson<T>(
       const detail =
         record?.msg ??
         record?.message ??
+        (typeof record?.error === "string" ? record.error : undefined) ??
         nested?.message ??
         nested?.name ??
         `HTTP ${response.status}`;
