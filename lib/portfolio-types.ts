@@ -5,6 +5,7 @@ export const PROVIDERS = [
   "bitget",
   "upbit",
   "bithumb",
+  "arcus",
 ] as const;
 
 export type Provider = (typeof PROVIDERS)[number];
@@ -42,6 +43,11 @@ export const PROVIDER_META: Record<
     name: "Bithumb",
     type: "Exchange",
     detail: "KRW spot",
+  },
+  arcus: {
+    name: "Arcus",
+    type: "Exchange",
+    detail: "Robinhood Chain · perps · stock tokens",
   },
 };
 
