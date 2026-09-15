@@ -18,7 +18,7 @@ import {
 import { fetchJson, numberValue } from "@/lib/server/http";
 
 const FALLBACK_KRW_USD = 1382;
-const STABLES = new Set(["USDT", "USDC", "FDUSD", "BUSD", "DAI", "TUSD", "USDE", "USDS", "KRW"]);
+const STABLES = new Set(["USDT", "USDC", "FDUSD", "BUSD", "DAI", "TUSD", "USDE", "USDS", "USDG", "KRW"]);
 
 const ASSET_NAMES: Record<string, string> = {
   BTC: "Bitcoin",
@@ -38,6 +38,7 @@ const ASSET_NAMES: Record<string, string> = {
   ZEC: "Zcash",
   HYPE: "Hyperliquid",
   AKE: "Akedo",
+  USDG: "Global Dollar",
 };
 
 type AssetAccumulator = {
