@@ -1015,36 +1015,55 @@ async function syncOkxWallet(
     throw new ProviderError("지갑 주소와 체인의 조합은 최대 50개까지 연결할 수 있습니다.", 400);
   }
 
+  // One request per address with every chain in the `chains` list (the API
+  // accepts up to 50 comma-separated chain IDs). Firing a request per chain
+  // tripped OKX's rate limit ("Too Many Requests") as soon as a second wallet
+  // was added, which silently dropped most chains.
+  const byAddress = new Map<string, string[]>();
+  for (const pair of pairs) {
+    const chains = byAddress.get(pair.address) ?? [];
+    chains.push(pair.chain);
+    byAddress.set(pair.address, chains);
+  }
+
   const settled: Array<{
-    pair: (typeof pairs)[number];
+    address: string;
+    chains: string[];
     response?: UnknownRecord;
     error?: string;
   }> = [];
-  for (let offset = 0; offset < pairs.length; offset += 5) {
-    const batch = pairs.slice(offset, offset + 5);
-    settled.push(
-      ...(await Promise.all(
-        batch.map(async (pair) => {
-          try {
-            const response = await okxGet<UnknownRecord>(
-              "/api/v6/dex/balance/all-token-balances-by-address",
-              {
-                address: pair.address,
-                chains: pair.chain,
-                excludeRiskToken: "0",
-              },
-              credentials,
-            );
-            if (text(response.code) !== "0") {
-              throw new ProviderError(text(response.msg) || "OKX Wallet 조회에 실패했습니다.");
-            }
-            return { pair, response };
-          } catch (error) {
-            return { pair, error: cleanProviderError(error) };
-          }
-        }),
-      )),
-    );
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  let index = 0;
+  for (const [address, chains] of byAddress) {
+    if (index > 0) await sleep(350);
+    index += 1;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const response = await okxGet<UnknownRecord>(
+          "/api/v6/dex/balance/all-token-balances-by-address",
+          { address, chains: chains.join(","), excludeRiskToken: "0" },
+          credentials,
+        );
+        if (text(response.code) !== "0") {
+          throw new ProviderError(
+            text(response.msg) || "OKX Wallet 조회에 실패했습니다.",
+            text(response.code) === "50011" ? 429 : 502,
+          );
+        }
+        settled.push({ address, chains, response });
+        break;
+      } catch (error) {
+        const rateLimited =
+          error instanceof ProviderError &&
+          (error.status === 429 || /too many requests/i.test(error.message));
+        if (rateLimited && attempt < 2) {
+          await sleep(1200 * (attempt + 1));
+          continue;
+        }
+        settled.push({ address, chains, error: cleanProviderError(error) });
+        break;
+      }
+    }
   }
 
   const successful = settled.filter((result) => result.response);
@@ -1088,7 +1107,9 @@ async function syncOkxWallet(
       .filter((result) => result.error)
       .map(
         (result) =>
-          `${CHAIN_NAMES[result.pair.chain] ?? `Chain ${result.pair.chain}`} 조회 실패: ${result.error}`,
+          `${result.address.slice(0, 6)}…${result.address.slice(-4)} (${result.chains
+            .map((chain) => CHAIN_NAMES[chain] ?? `Chain ${chain}`)
+            .join(", ")}) 조회 실패: ${result.error}`,
       ),
     syncedAt: new Date().toISOString(),
   };
