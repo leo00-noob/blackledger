@@ -973,7 +973,7 @@ async function okxGet<T>(
 ): Promise<T> {
   const { apiKey, secretKey, passphrase } = assertApiCredentials(credentials, true);
   const query = new URLSearchParams(params).toString();
-  const pathWithQuery = `${path}?${query}`;
+  const pathWithQuery = query ? `${path}?${query}` : path;
   const timestamp = new Date().toISOString();
   const signature = await hmac(
     secretKey,
@@ -1015,15 +1015,35 @@ async function syncOkxWallet(
     throw new ProviderError("지갑 주소와 체인의 조합은 최대 50개까지 연결할 수 있습니다.", 400);
   }
 
-  // One request per address with every chain in the `chains` list (the API
-  // accepts up to 50 comma-separated chain IDs). Firing a request per chain
-  // tripped OKX's rate limit ("Too Many Requests") as soon as a second wallet
-  // was added, which silently dropped most chains.
+  // An unsupported chain makes OKX reject the entire address request. Check the
+  // balance API's supported chains first, then keep one batched request per address.
+  const supportedResponse = await okxGet<UnknownRecord>(
+    "/api/v6/dex/balance/supported/chain",
+    {},
+    credentials,
+  );
+  const supportedChains = new Set(
+    array(supportedResponse.data)
+      .map((item) => text(record(item).chainIndex))
+      .filter(Boolean),
+  );
+  if (text(supportedResponse.code) !== "0" || !supportedChains.size) {
+    throw new ProviderError(
+      text(supportedResponse.msg) || "OKX Wallet 지원 체인 목록을 확인하지 못했습니다.",
+      502,
+    );
+  }
+
+  const unsupportedByAddress = new Map<string, string[]>();
   const byAddress = new Map<string, string[]>();
   for (const pair of pairs) {
-    const chains = byAddress.get(pair.address) ?? [];
+    const target = supportedChains.has(pair.chain) ? byAddress : unsupportedByAddress;
+    const chains = target.get(pair.address) ?? [];
     chains.push(pair.chain);
-    byAddress.set(pair.address, chains);
+    target.set(pair.address, chains);
+  }
+  if (!byAddress.size) {
+    throw new ProviderError("OKX Wallet 잔고 API가 입력한 체인을 지원하지 않습니다.", 400);
   }
 
   const settled: Array<{
@@ -1074,8 +1094,11 @@ async function syncOkxWallet(
   }
 
   const holdings: NormalizedHolding[] = [];
-  for (const { response } of successful) {
+  for (const { address, response } of successful) {
     if (!response) continue;
+    const shortAddress = address.length > 12
+      ? `${address.slice(0, 6)}…${address.slice(-4)}`
+      : address;
     for (const group of array(response.data)) {
       for (const item of array(record(group).tokenAssets)) {
         const row = record(item);
@@ -1087,7 +1110,7 @@ async function syncOkxWallet(
         holdings.push({
           symbol,
           venue: "OKX Wallet",
-          account: CHAIN_NAMES[chain] ?? `Chain ${chain}`,
+          account: `${CHAIN_NAMES[chain] ?? `Chain ${chain}`} · ${shortAddress}`,
           chain,
           amount,
           priceUsd,
@@ -1103,14 +1126,21 @@ async function syncOkxWallet(
     accountNetUsd: holdings.reduce((sum, item) => sum + item.valueUsd, 0),
     holdings,
     positions: [],
-    warnings: settled
-      .filter((result) => result.error)
-      .map(
-        (result) =>
-          `${result.address.slice(0, 6)}…${result.address.slice(-4)} (${result.chains
-            .map((chain) => CHAIN_NAMES[chain] ?? `Chain ${chain}`)
-            .join(", ")}) 조회 실패: ${result.error}`,
+    warnings: [
+      ...Array.from(unsupportedByAddress, ([address, chains]) =>
+        `${address.slice(0, 6)}…${address.slice(-4)}: ${chains
+          .map((chain) => CHAIN_NAMES[chain] ?? `Chain ${chain}`)
+          .join(", ")} 체인은 OKX Wallet 잔고 API에서 지원하지 않아 제외했습니다.`,
       ),
+      ...settled
+        .filter((result) => result.error)
+        .map(
+          (result) =>
+            `${result.address.slice(0, 6)}…${result.address.slice(-4)} (${result.chains
+              .map((chain) => CHAIN_NAMES[chain] ?? `Chain ${chain}`)
+              .join(", ")}) 조회 실패: ${result.error}`,
+        ),
+    ],
     syncedAt: new Date().toISOString(),
   };
 }
@@ -1140,10 +1170,14 @@ export function publicCredentialSummary(
 ): string {
   if (provider === "okx_wallet") {
     const entries = credentials.walletEntries ?? [];
-    const first = entries[0]?.address ?? "";
-    const short = first.length > 12 ? `${first.slice(0, 6)}…${first.slice(-4)}` : first;
+    const addresses = Array.from(
+      new Set(entries.map((entry) => entry.address?.trim() ?? "").filter(Boolean)),
+    );
+    const visible = addresses.slice(0, 4).map((address) =>
+      address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address,
+    );
     const chains = new Set(entries.flatMap((entry) => entry.chains ?? [])).size;
-    return `${short}${entries.length > 1 ? ` +${entries.length - 1}` : ""} · ${chains} chains`;
+    return `${visible.join(", ")}${addresses.length > 4 ? ` +${addresses.length - 4}` : ""} · ${chains} chains`;
   }
   const key = credentials.apiKey?.trim() ?? "";
   return key ? `API •••• ${key.slice(-4)}` : PROVIDER_META[provider].detail;
