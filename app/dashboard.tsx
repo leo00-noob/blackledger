@@ -738,6 +738,13 @@ export function Dashboard() {
       .map((item, index) => ({ label: item.label, value: item.valueKrw, shade: shades[index % shades.length] }))
   }, [liveMode, portfolio])
 
+  const compositionValues = [
+    { label: "Spot", value: liveMode && portfolio ? portfolio.composition.spotKrw : 55_300_000 },
+    { label: "Derivatives", value: liveMode && portfolio ? portfolio.composition.derivativeEquityKrw : 14_400_000 },
+    { label: "Stable", value: liveMode && portfolio ? portfolio.composition.stableKrw : 12_550_000 },
+  ]
+  const compositionTotal = compositionValues.reduce((sum, item) => sum + item.value, 0)
+
   const periodStats = React.useMemo(() => {
     if (!liveMode || !portfolio) return PERIOD_STATS
     return [
@@ -1233,15 +1240,11 @@ export function Dashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-3 border-l border-t border-neutral-300">
-                {[
-                  { label: "Spot", value: liveMode && portfolio ? portfolio.composition.spotKrw : 55_300_000 },
-                  { label: "Derivatives", value: liveMode && portfolio ? portfolio.composition.derivativeEquityKrw : 14_400_000 },
-                  { label: "Stable", value: liveMode && portfolio ? portfolio.composition.stableKrw : 12_550_000 },
-                ].map((item, index) => (
+                {compositionValues.map((item, index) => (
                   <div key={item.label} className="border-b border-r border-neutral-300 px-4 py-5">
                     <p className="mb-5 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">{item.label}</p>
-                    <p className="text-xl font-semibold tabular-nums">{totalAssets ? ((item.value / totalAssets) * 100).toFixed(1) : "0.0"}%</p>
-                    <div className="mt-4 h-1 bg-neutral-200"><div className="h-full bg-black" style={{ width: `${Math.min(100, totalAssets ? (item.value / totalAssets) * 100 * 2.2 : 0)}%`, opacity: 1 - index * 0.25 }} /></div>
+                    <p className="text-xl font-semibold tabular-nums">{compositionTotal ? ((item.value / compositionTotal) * 100).toFixed(1) : "0.0"}%</p>
+                    <div className="mt-4 h-1 bg-neutral-200"><div className="h-full bg-black" style={{ width: `${Math.min(100, compositionTotal ? (item.value / compositionTotal) * 100 * 2.2 : 0)}%`, opacity: 1 - index * 0.25 }} /></div>
                   </div>
                 ))}
               </div>
