@@ -70,45 +70,72 @@ test("includes USD-M wallet balance plus unrealized PnL and keeps AKE short expo
   }
 });
 
-test("keeps Solana and Robinhood balances when another OKX chain fails", async () => {
+test("OKX keeps two Solana and EVM wallets when unsupported chains are selected", async () => {
   const originalFetch = globalThis.fetch;
-  const requestedChains = [];
+  const requested = [];
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
-    const chain = url.searchParams.get("chains");
-    requestedChains.push(chain);
+    if (url.pathname === "/api/v6/dex/balance/supported/chain") {
+      return json({
+        code: "0",
+        data: [{ chainIndex: "1" }, { chainIndex: "501" }],
+      });
+    }
+    if (url.pathname !== "/api/v6/dex/balance/all-token-balances-by-address") {
+      return json({ code: "500", msg: "Unexpected test URL" }, 400);
+    }
 
-    if (chain === "501") {
-      return json({
-        code: "0",
-        data: [{ tokenAssets: [{ symbol: "SOL", balance: "2", tokenPrice: "100", chainIndex: "501" }] }],
-      });
+    const address = url.searchParams.get("address");
+    const chains = url.searchParams.get("chains");
+    requested.push([address, chains]);
+    if (chains?.includes("999")) {
+      return json({ code: "500", msg: "allTokenBalancesByAddress.chains: Chain not support" });
     }
-    if (chain === "4663") {
-      return json({
-        code: "0",
-        data: [{ tokenAssets: [{ symbol: "ETH", balance: "0.025", tokenPrice: "2000", chainIndex: "4663" }] }],
-      });
-    }
-    return json({ code: "500", msg: "Unsupported chain" });
+    const isSolana = chains === "501";
+    const balance = address === "solana-new1" ? "2" : address === "solana-wallet2" ? "1" :
+      address === "0x1111111111111111111111111111111111111111" ? "0.025" : "0.03";
+    return json({
+      code: "0",
+      data: [{ tokenAssets: [{
+        symbol: isSolana ? "SOL" : "ETH",
+        balance,
+        tokenPrice: isSolana ? "100" : "2000",
+        chainIndex: chains,
+      }] }],
+    });
   };
 
   try {
-    const snapshot = await syncProvider("okx_wallet", {
+    const credentials = {
       apiKey: "test-api-key",
       secretKey: "test-secret-key",
       passphrase: "test-passphrase",
       walletEntries: [
-        { address: "solana-address", chains: ["501"] },
-        { address: "0x1111111111111111111111111111111111111111", chains: ["4663", "999"] },
+        { address: "solana-new1", chains: ["501"] },
+        { address: "0x1111111111111111111111111111111111111111", chains: ["1", "999"] },
+        { address: "solana-wallet2", chains: ["501"] },
+        { address: "0x2222222222222222222222222222222222222222", chains: ["1", "999"] },
       ],
-    });
+    };
+    const snapshot = await syncProvider("okx_wallet", credentials);
 
-    assert.equal(snapshot.accountNetUsd, 250);
-    assert.deepEqual(snapshot.holdings.map((holding) => holding.account), ["Solana", "Robinhood Chain"]);
-    assert.equal(snapshot.warnings.length, 1);
-    assert.match(snapshot.warnings[0], /HyperEVM 조회 실패/);
-    assert.deepEqual(new Set(requestedChains), new Set(["501", "4663", "999"]));
+    assert.equal(snapshot.accountNetUsd, 410);
+    assert.equal(snapshot.holdings.length, 4);
+    assert.equal(new Set(snapshot.holdings.map((holding) => holding.account)).size, 4);
+    assert.ok(snapshot.holdings.some((holding) => holding.account === "Ethereum · 0x2222…2222"));
+    assert.equal(snapshot.warnings.length, 2);
+    assert.ok(snapshot.warnings.every((warning) => /HyperEVM.*지원하지 않아 제외/.test(warning)));
+    assert.deepEqual(requested, [
+      ["solana-new1", "501"],
+      ["0x1111111111111111111111111111111111111111", "1"],
+      ["solana-wallet2", "501"],
+      ["0x2222222222222222222222222222222222222222", "1"],
+    ]);
+
+    const { publicCredentialSummary } = await import("@/lib/server/providers.ts");
+    const summary = publicCredentialSummary("okx_wallet", credentials);
+    assert.match(summary, /0x1111…1111/);
+    assert.match(summary, /0x2222…2222/);
   } finally {
     globalThis.fetch = originalFetch;
   }
