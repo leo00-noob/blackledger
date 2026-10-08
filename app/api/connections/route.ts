@@ -310,6 +310,7 @@ export async function POST(request: Request) {
           await db
             .update(connections)
             .set({
+              publicSummary: publicCredentialSummary(rowProvider, credentials),
               status: "connected",
               lastSyncedAt: snapshot.syncedAt,
               lastError: null,
