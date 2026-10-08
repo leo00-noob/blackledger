@@ -62,8 +62,6 @@ const OKX_EVM_CHAIN_IDS = [
   "137",
   "143",
   "196",
-  "999",
-  "4663",
   "8453",
   "42161",
   "43114",
@@ -426,7 +424,7 @@ export function ConnectionsPanel({
                       <Label htmlFor="wallet-entries">Addresses by chain</Label>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" onClick={fillOkxEvmAddress} className="h-8 rounded-none border-neutral-300 text-xs shadow-none">
-                          <Wallet className="size-3.5" /> Import EVM + Robinhood
+                          <Wallet className="size-3.5" /> Import EVM address
                         </Button>
                         <Button type="button" variant="outline" onClick={fillOkxSolanaAddress} className="h-8 rounded-none border-neutral-300 text-xs shadow-none">
                           <Wallet className="size-3.5" /> Import Solana
@@ -437,12 +435,12 @@ export function ConnectionsPanel({
                       id="wallet-entries"
                       value={form.walletEntries}
                       onChange={(event) => setForm((current) => ({ ...current, walletEntries: event.target.value }))}
-                      placeholder={"1,10,56,137,4663,8453,42161:0x…\n501:Solana address\n0:Bitcoin address"}
+                      placeholder={"1,10,56,137,8453,42161:0x…\n501:Solana address\n0:Bitcoin address"}
                       className="min-h-28 rounded-none border-neutral-300 font-mono text-xs shadow-none focus-visible:border-black focus-visible:ring-0"
                       autoComplete="off"
                     />
                     <p className="text-xs leading-5 text-neutral-500">
-                      Robinhood Chain은 4663, Solana는 501입니다. 기존 주소는 유지되고 여기 입력한 체인만 추가됩니다.
+                      확장 프로그램에서 각 지갑으로 전환한 뒤 EVM과 Solana 주소를 각각 가져오세요. Solana는 501입니다. 기존 주소는 유지되며 OKX 잔고 API가 지원하지 않는 체인은 조회에서 제외되고 경고에 표시됩니다.
                     </p>
                   </div>
                 ) : null}
