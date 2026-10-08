@@ -325,18 +325,20 @@ export async function buildPortfolio(userId: string) {
     label: account.name,
     valueKrw: account.valueKrw,
   }));
-  const spotKrw = liveAssets.reduce((sum, item) => sum + item.spotValueKrw, 0);
-  const stableKrw = liveAssets
-    .filter((item) => STABLES.has(item.symbol))
-    .reduce((sum, item) => sum + item.totalValueKrw, 0);
-  const derivativeEquityKrw = liveAssets.reduce(
-    (sum, item) =>
-      sum +
-      item.holdings
-        .filter((holding) => holding.exposure === "Collateral")
-        .reduce((inner, holding) => inner + holding.valueKrw, 0),
-    0,
-  );
+  let spotKrw = 0;
+  let stableKrw = 0;
+  let derivativeEquityKrw = 0;
+  for (const asset of liveAssets) {
+    for (const holding of asset.holdings) {
+      if (holding.exposure === "Collateral") {
+        derivativeEquityKrw += holding.valueKrw;
+      } else if (STABLES.has(asset.symbol)) {
+        stableKrw += holding.valueKrw;
+      } else {
+        spotKrw += holding.valueKrw;
+      }
+    }
+  }
 
   const periodReturn = (days: number) => {
     if (history.length < 2) return null;
