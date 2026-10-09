@@ -10,6 +10,7 @@ import {
   type ProviderSnapshot,
 } from "@/lib/portfolio-types";
 import { getApiUser, unauthorized } from "@/lib/server/auth";
+import { forbiddenOrigin, trustedOrigin } from "@/lib/server/request-security";
 import { decryptJson, encryptJson } from "@/lib/server/crypto";
 import { cleanProviderError, ProviderError } from "@/lib/server/http";
 import { buildPortfolio, connectionSummary } from "@/lib/server/portfolio";
@@ -159,6 +160,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!trustedOrigin(request)) return forbiddenOrigin();
   const user = await getApiUser(request);
   if (!user) return unauthorized();
   await ensureDatabase();
@@ -238,7 +240,7 @@ export async function POST(request: Request) {
         throw new ProviderError("OKX Wallet 연결에서만 체인을 추가할 수 있습니다.", 400);
       }
       const additions = Array.isArray(body.walletEntries)
-        ? (body.walletEntries as ProviderCredentials["walletEntries"])
+        ? (body.walletEntries as NonNullable<ProviderCredentials["walletEntries"]>)
         : [];
       if (!additions.length) {
         throw new ProviderError("추가할 공개 주소와 체인을 입력해 주세요.", 400);
