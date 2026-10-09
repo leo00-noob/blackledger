@@ -4,12 +4,14 @@ import { ensureDatabase, getDb } from "@/db";
 import { connections, costBasisOverrides } from "@/db/schema";
 import { isProvider } from "@/lib/portfolio-types";
 import { getApiUser, unauthorized } from "@/lib/server/auth";
+import { forbiddenOrigin, trustedOrigin } from "@/lib/server/request-security";
 import { cleanProviderError, ProviderError } from "@/lib/server/http";
 import { buildPortfolio, getKrwUsdRate } from "@/lib/server/portfolio";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!trustedOrigin(request)) return forbiddenOrigin();
   const user = await getApiUser(request);
   if (!user) return unauthorized();
   await ensureDatabase();
@@ -78,6 +80,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  if (!trustedOrigin(request)) return forbiddenOrigin();
   const user = await getApiUser(request);
   if (!user) return unauthorized();
   await ensureDatabase();
