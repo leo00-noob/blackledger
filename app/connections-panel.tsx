@@ -39,6 +39,7 @@ const DOCS: Record<Provider, string> = {
   bitget: "https://www.bitget.com/api-doc/common/signature",
   upbit: "https://global-docs.upbit.com/reference/auth",
   bithumb: "https://apidocs.bithumb.com/docs/%EC%9D%B8%EC%A6%9D-%ED%86%A0%ED%81%B0-%EC%83%9D%EC%84%B1%ED%95%98%EA%B8%B0",
+  arcus: "https://docs.arcus.xyz/api-reference/public/get-account",
 }
 
 type FormState = {
@@ -46,6 +47,8 @@ type FormState = {
   secretKey: string
   passphrase: string
   walletEntries: string
+  arcusAddress: string
+  arcusAccountIndex: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -53,6 +56,8 @@ const EMPTY_FORM: FormState = {
   secretKey: "",
   passphrase: "",
   walletEntries: "",
+  arcusAddress: "",
+  arcusAccountIndex: "0",
 }
 
 const OKX_EVM_CHAIN_IDS = [
@@ -184,7 +189,12 @@ export function ConnectionsPanel({
         return
       }
       const credentials =
-        selected === "okx_wallet"
+        selected === "arcus"
+          ? {
+              arcusAddress: form.arcusAddress.trim(),
+              arcusAccountIndex: Number(form.arcusAccountIndex),
+            }
+          : selected === "okx_wallet"
           ? {
               apiKey: form.apiKey.trim(),
               secretKey: form.secretKey.trim(),
@@ -406,7 +416,9 @@ export function ConnectionsPanel({
                 <DialogDescription className="max-w-xl pt-2 leading-6">
                   {selected === "okx_wallet" && byProvider.has("okx_wallet")
                     ? "저장된 조회 키는 그대로 두고, 새 공개 주소와 체인만 추가합니다."
-                    : "저장 전에 실제 조회 요청으로 키를 검증합니다. 입력값은 성공 후 즉시 비웁니다."}
+                    : selected === "arcus"
+                      ? "Arcus의 공개 조회 API로 지갑 주소의 서브계정 잔고를 확인합니다. API 키와 서명키는 필요하지 않습니다."
+                      : "저장 전에 실제 조회 요청으로 키를 검증합니다. 입력값은 성공 후 즉시 비웁니다."}
                 </DialogDescription>
               </DialogHeader>
 
@@ -445,8 +457,20 @@ export function ConnectionsPanel({
                   </div>
                 ) : null}
 
-                {selected !== "okx_wallet" || !byProvider.has("okx_wallet") ? (
-                  <>
+                {selected === "arcus" ? (
+                   <>
+                     <div className="space-y-2">
+                       <Label htmlFor="arcus-address">Arcus 지갑 주소</Label>
+                       <Input id="arcus-address" value={form.arcusAddress} onChange={(event) => setForm((current) => ({ ...current, arcusAddress: event.target.value }))} placeholder="0x…" className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="off" spellCheck={false} />
+                     </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="arcus-account-index">서브계정 번호 (0–9)</Label>
+                       <Input id="arcus-account-index" type="number" min="0" max="9" step="1" value={form.arcusAccountIndex} onChange={(event) => setForm((current) => ({ ...current, arcusAccountIndex: event.target.value }))} className="rounded-none border-neutral-300 shadow-none focus-visible:border-black focus-visible:ring-0" />
+                     </div>
+                     <p className="text-xs leading-5 text-neutral-500">Arcus 앱에서 사용한 지갑 주소를 입력하세요. 기본 서브계정은 0입니다. 현물 토큰은 연결된 지갑의 Robinhood Chain 잔고에서 조회됩니다.</p>
+                   </>
+                 ) : selected !== "okx_wallet" || !byProvider.has("okx_wallet") ? (
+                   <>
                     <div className="space-y-2">
                       <Label htmlFor="api-key">API Key</Label>
                       <Input id="api-key" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="off" spellCheck={false} />
@@ -480,7 +504,9 @@ export function ConnectionsPanel({
                 <p className="max-w-sm text-xs leading-5 text-neutral-500">
                   {selected === "okx_wallet" && byProvider.has("okx_wallet")
                     ? "공개 주소만 추가되며 개인키나 시드 문구는 요청하지 않습니다."
-                    : "출금·주문 권한이 켜진 키는 사용하지 마세요."}
+                    : selected === "arcus"
+                      ? "공개 주소만 사용합니다. API Signing Key는 입력하지 마세요."
+                      : "출금·주문 권한이 켜진 키는 사용하지 마세요."}
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setSelected(null)} disabled={Boolean(busy)} className="rounded-none border-neutral-300 shadow-none">Cancel</Button>
