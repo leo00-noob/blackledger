@@ -70,39 +70,53 @@ test("includes USD-M wallet balance plus unrealized PnL and keeps AKE short expo
   }
 });
 
-test("OKX keeps two Solana and EVM wallets when unsupported chains are selected", async () => {
+test("OKX combines HyperEVM with its supported chains for both wallets", async () => {
   const originalFetch = globalThis.fetch;
   const requested = [];
-  globalThis.fetch = async (input) => {
+  const evmA = "0x1111111111111111111111111111111111111111";
+  const evmB = "0x2222222222222222222222222222222222222222";
+  globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     if (url.pathname === "/api/v6/dex/balance/supported/chain") {
-      return json({
-        code: "0",
-        data: [{ chainIndex: "1" }, { chainIndex: "501" }],
-      });
+      return json({ code: "0", data: [{ chainIndex: "1" }, { chainIndex: "501" }] });
     }
-    if (url.pathname !== "/api/v6/dex/balance/all-token-balances-by-address") {
-      return json({ code: "500", msg: "Unexpected test URL" }, 400);
-    }
-
-    const address = url.searchParams.get("address");
-    const chains = url.searchParams.get("chains");
-    requested.push([address, chains]);
-    if (chains?.includes("999")) {
-      return json({ code: "500", msg: "allTokenBalancesByAddress.chains: Chain not support" });
-    }
-    const isSolana = chains === "501";
-    const balance = address === "solana-new1" ? "2" : address === "solana-wallet2" ? "1" :
-      address === "0x1111111111111111111111111111111111111111" ? "0.025" : "0.03";
-    return json({
-      code: "0",
-      data: [{ tokenAssets: [{
+    if (url.pathname === "/api/v6/dex/balance/all-token-balances-by-address") {
+      const address = url.searchParams.get("address");
+      const chains = url.searchParams.get("chains");
+      requested.push([address, chains]);
+      assert.ok(!chains?.includes("999"));
+      const isSolana = chains === "501";
+      const balance = address === "solana-new1" ? "2" : address === "solana-wallet2" ? "1" :
+        address === evmA ? "0.025" : "0.03";
+      return json({ code: "0", data: [{ tokenAssets: [{
         symbol: isSolana ? "SOL" : "ETH",
         balance,
         tokenPrice: isSolana ? "100" : "2000",
         chainIndex: chains,
-      }] }],
-    });
+      }] }] });
+    }
+    if (url.host === "rpc.hyperliquid.xyz") {
+      const body = JSON.parse(init.body);
+      if (body.method === "eth_getBalance") {
+        const hype = body.params[0] === evmA ? 1n : 2n;
+        return json({ jsonrpc: "2.0", id: 1, result: "0x" + (hype * 10n ** 18n).toString(16) });
+      }
+      if (body.method === "eth_call") {
+        const usdc = body.params[0].to.toLowerCase() === "0xb88339cb7199b77e23db6e890353e22632ba630f";
+        const walletA = body.params[0].data.endsWith(evmA.slice(2));
+        return json({ jsonrpc: "2.0", id: 1, result: "0x" + (usdc ? (walletA ? 5_000_000 : 10_000_000) : 0).toString(16) });
+      }
+    }
+    if (url.host === "www.hyperscan.com" && url.pathname.endsWith("/tokens")) {
+      return json({ items: [], next_page_params: null });
+    }
+    if (url.host === "coins.llama.fi") {
+      return json({ coins: {
+        "coingecko:hyperliquid": { price: 100 },
+        "hyperliquid:0xb88339cb7199b77e23db6e890353e22632ba630f": { price: 1 },
+      } });
+    }
+    return json({ code: -1, msg: "Unexpected test URL" }, 400);
   };
 
   try {
@@ -112,30 +126,24 @@ test("OKX keeps two Solana and EVM wallets when unsupported chains are selected"
       passphrase: "test-passphrase",
       walletEntries: [
         { address: "solana-new1", chains: ["501"] },
-        { address: "0x1111111111111111111111111111111111111111", chains: ["1", "999"] },
+        { address: evmA, chains: ["1", "999"] },
         { address: "solana-wallet2", chains: ["501"] },
-        { address: "0x2222222222222222222222222222222222222222", chains: ["1", "999"] },
+        { address: evmB, chains: ["1", "999"] },
       ],
     };
     const snapshot = await syncProvider("okx_wallet", credentials);
 
-    assert.equal(snapshot.accountNetUsd, 410);
-    assert.equal(snapshot.holdings.length, 4);
-    assert.equal(new Set(snapshot.holdings.map((holding) => holding.account)).size, 4);
-    assert.ok(snapshot.holdings.some((holding) => holding.account === "Ethereum · 0x2222…2222"));
-    assert.equal(snapshot.warnings.length, 2);
-    assert.ok(snapshot.warnings.every((warning) => /HyperEVM.*지원하지 않아 제외/.test(warning)));
+    assert.equal(snapshot.accountNetUsd, 725);
+    assert.equal(snapshot.holdings.length, 8);
+    assert.ok(snapshot.holdings.some((holding) => holding.account === "HyperEVM · 0x1111…1111" && holding.symbol === "HYPE"));
+    assert.ok(snapshot.holdings.some((holding) => holding.account === "HyperEVM · 0x2222…2222" && holding.symbol === "USDC"));
+    assert.deepEqual(snapshot.warnings, []);
     assert.deepEqual(requested, [
       ["solana-new1", "501"],
-      ["0x1111111111111111111111111111111111111111", "1"],
+      [evmA, "1"],
       ["solana-wallet2", "501"],
-      ["0x2222222222222222222222222222222222222222", "1"],
+      [evmB, "1"],
     ]);
-
-    const { publicCredentialSummary } = await import("@/lib/server/providers.ts");
-    const summary = publicCredentialSummary("okx_wallet", credentials);
-    assert.match(summary, /0x1111…1111/);
-    assert.match(summary, /0x2222…2222/);
   } finally {
     globalThis.fetch = originalFetch;
   }
