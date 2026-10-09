@@ -7,7 +7,7 @@ const WINDOW_MS = 15 * 60 * 1000;
 export function trustedOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
-  const allowed = [process.env.AUTH_ORIGIN, process.env.VERCEL_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]
+  const allowed = [process.env.AUTH_ORIGIN, process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]
     .filter((value): value is string => !!value)
     .map((value) => value.startsWith("http") ? value : `https://${value}`);
   if (process.env.NODE_ENV !== "production") allowed.push(new URL(request.url).origin);
