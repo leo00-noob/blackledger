@@ -307,13 +307,16 @@ const ACTIVITY = [
   { time: "Yesterday · 17:32", type: "Funding", asset: "AKE", detail: "Bitget · Short", amount: "+18.42 USDT", value: 25_456 },
 ]
 
+const ALLOCATION_SHADES = ["#111111", "#f2f2f2", "#3f3f3f", "#d4d4d4", "#777777", "#adadad"]
+const COMPOSITION_SHADES = ["#111111", "#737373", "#c9c9c9"]
+
 const VENUE_ALLOCATION = [
-  { label: "Binance", value: 29_420_000, shade: "#090909" },
-  { label: "OKX Wallet", value: 18_210_000, shade: "#383838" },
-  { label: "Bybit", value: 13_810_000, shade: "#686868" },
-  { label: "Upbit", value: 10_110_000, shade: "#989898" },
-  { label: "Bitget", value: 6_430_000, shade: "#bebebe" },
-  { label: "Bithumb", value: 4_294_830, shade: "#dedede" },
+  { label: "Binance", value: 29_420_000, shade: ALLOCATION_SHADES[0] },
+  { label: "OKX Wallet", value: 18_210_000, shade: ALLOCATION_SHADES[1] },
+  { label: "Bybit", value: 13_810_000, shade: ALLOCATION_SHADES[2] },
+  { label: "Upbit", value: 10_110_000, shade: ALLOCATION_SHADES[3] },
+  { label: "Bitget", value: 6_430_000, shade: ALLOCATION_SHADES[4] },
+  { label: "Bithumb", value: 4_294_830, shade: ALLOCATION_SHADES[5] },
 ]
 
 const WIDGET_LABELS: Record<WidgetId, { title: string; description: string }> = {
@@ -732,10 +735,9 @@ export function Dashboard() {
 
   const venueAllocation = React.useMemo(() => {
     if (!liveMode || !portfolio) return VENUE_ALLOCATION
-    const shades = ["#090909", "#383838", "#686868", "#989898", "#bebebe", "#dedede"]
     return portfolio.allocation
       .filter((item) => item.valueKrw !== 0)
-      .map((item, index) => ({ label: item.label, value: item.valueKrw, shade: shades[index % shades.length] }))
+      .map((item, index) => ({ label: item.label, value: item.valueKrw, shade: ALLOCATION_SHADES[index % ALLOCATION_SHADES.length] }))
   }, [liveMode, portfolio])
 
   const compositionValues = [
@@ -1225,7 +1227,7 @@ export function Dashboard() {
             <SectionHeading eyebrow="Distribution" title="Allocation" note="Where capital sits, and how much remains directional." />
             <div className="grid gap-12 xl:grid-cols-[1.35fr_1fr]">
               <div>
-                <div className="mb-6 flex h-7 w-full overflow-hidden border border-black" aria-label="Venue allocation">
+                <div className="mb-6 flex h-7 w-full gap-px overflow-hidden border border-black bg-neutral-500" aria-label="Venue allocation">
                   {venueAllocation.map((venue) => (
                     <span key={venue.label} style={{ width: `${totalAssets ? (venue.value / totalAssets) * 100 : 0}%`, backgroundColor: venue.shade }} title={`${venue.label} ${formatMoney(venue.value, currency)}`} />
                   ))}
@@ -1233,7 +1235,7 @@ export function Dashboard() {
                 <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
                   {venueAllocation.map((venue) => (
                     <div key={venue.label} className="flex items-center justify-between border-b border-neutral-200 pb-3">
-                      <span className="flex items-center gap-2 text-sm"><span className="size-2.5" style={{ backgroundColor: venue.shade }} />{venue.label}</span>
+                      <span className="flex items-center gap-2 text-sm"><span className="size-2.5 border border-neutral-500" style={{ backgroundColor: venue.shade }} />{venue.label}</span>
                       <span className="text-sm font-medium tabular-nums">{totalAssets ? ((venue.value / totalAssets) * 100).toFixed(1) : "0.0"}%</span>
                     </div>
                   ))}
@@ -1244,7 +1246,7 @@ export function Dashboard() {
                   <div key={item.label} className="border-b border-r border-neutral-300 px-4 py-5">
                     <p className="mb-5 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">{item.label}</p>
                     <p className="text-xl font-semibold tabular-nums">{compositionTotal ? ((item.value / compositionTotal) * 100).toFixed(1) : "0.0"}%</p>
-                    <div className="mt-4 h-1 bg-neutral-200"><div className="h-full bg-black" style={{ width: `${Math.min(100, compositionTotal ? (item.value / compositionTotal) * 100 * 2.2 : 0)}%`, opacity: 1 - index * 0.25 }} /></div>
+                    <div className="mt-4 h-2 border border-neutral-300 bg-white"><div className="h-full" style={{ width: `${compositionTotal ? (item.value / compositionTotal) * 100 : 0}%`, backgroundColor: COMPOSITION_SHADES[index] }} /></div>
                   </div>
                 ))}
               </div>
