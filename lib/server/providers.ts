@@ -1145,6 +1145,93 @@ async function syncOkxWallet(
   };
 }
 
+// Arcus account reads are public. Never accept or store an API signing key for this path.
+async function syncArcus(credentials: ProviderCredentials): Promise<ProviderSnapshot> {
+  const address = credentials.arcusAddress?.trim() ?? "";
+  const accountIndex = credentials.arcusAccountIndex ?? 0;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    throw new ProviderError("Arcus에서 사용하는 EVM 지갑 주소를 입력해 주세요.", 400);
+  }
+  if (!Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex > 9) {
+    throw new ProviderError("Arcus 서브계정 번호는 0부터 9까지 입력해 주세요.", 400);
+  }
+
+  const params = new URLSearchParams({ address, accountIndex: String(accountIndex) });
+  let account: UnknownRecord;
+  try {
+    account = record(await fetchJson<unknown>(`https://api.arcus.xyz/v1/account?${params}`));
+  } catch (error) {
+    if (error instanceof ProviderError && error.status === 404) {
+      throw new ProviderError("Arcus에서 이 주소의 계정을 찾지 못했습니다. 지갑 주소와 서브계정 번호를 확인해 주세요.", 404);
+    }
+    throw error;
+  }
+  const equity = Number(account.equity);
+  if (!Number.isFinite(equity) || !account.address || !account.positions || typeof account.positions !== "object") {
+    throw new ProviderError("Arcus 계정 응답에서 평가액 또는 포지션을 확인할 수 없습니다.", 502);
+  }
+
+  const rawPositions = record(account.positions);
+  const warnings: string[] = [];
+  const positions: NormalizedPosition[] = [];
+  if (Object.keys(rawPositions).length) {
+    try {
+      const marketsResponse = record(await fetchJson<unknown>("https://api.arcus.xyz/v1/markets"));
+      const markets = array(marketsResponse.markets).map(record);
+      const byId = new Map(markets.map((market) => [String(market.marketId), market]));
+      for (const [marketId, value] of Object.entries(rawPositions)) {
+        const position = record(value);
+        const market = byId.get(marketId);
+        const size = Number(position.size ?? position.positionSize);
+        const markPrice = Number(market?.markPrice ?? market?.oraclePrice ?? position.markPrice);
+        const entryPrice = Number(position.entryPrice ?? position.averageEntryPrice);
+        const name = text(market?.baseAsset ?? market?.marketDisplayName);
+        if (!Number.isFinite(size) || size === 0 || !Number.isFinite(markPrice) || markPrice <= 0 || !name) {
+          warnings.push(`Arcus market ${marketId} 포지션 세부 정보를 읽을 수 없습니다.`);
+          continue;
+        }
+        const symbol = name.replace(/-USD$/, "").toUpperCase();
+        const unrealizedPnl = Number(position.unrealizedPnl ?? position.unrealizedPnlUsd);
+        positions.push({
+          symbol,
+          venue: "Arcus Perps",
+          side: size > 0 ? "LONG" : "SHORT",
+          amount: Math.abs(size),
+          notionalUsd: Math.abs(size * markPrice),
+          entryPriceUsd: Number.isFinite(entryPrice) ? entryPrice : 0,
+          markPriceUsd: markPrice,
+          unrealizedPnlUsd: Number.isFinite(unrealizedPnl)
+            ? unrealizedPnl
+            : Number.isFinite(entryPrice) ? (markPrice - entryPrice) * size : 0,
+          liquidationPriceUsd: numberValue(position.liquidationPrice),
+          leverage: numberValue(position.leverage),
+          marginMode: text(position.marginMode ?? "CROSS"),
+        });
+      }
+    } catch (error) {
+      warnings.push(`Arcus 포지션 시장 정보를 조회하지 못했습니다: ${cleanProviderError(error)}`);
+    }
+  }
+
+  return {
+    provider: "arcus",
+    accountNetUsd: equity,
+    holdings: equity === 0 ? [] : [{
+      symbol: "USDG",
+      venue: "Arcus Perps",
+      account: `Subaccount ${accountIndex}`,
+      amount: equity,
+      priceUsd: 1,
+      valueUsd: equity,
+      category: "collateral",
+    }],
+    positions,
+    warnings,
+    coverage: { derivatives: true },
+    syncedAt: new Date().toISOString(),
+  };
+}
+
 export async function syncProvider(
   provider: Provider,
   credentials: ProviderCredentials,
@@ -1161,6 +1248,8 @@ export async function syncProvider(
       return syncKoreanExchange(provider, credentials);
     case "okx_wallet":
       return syncOkxWallet(credentials);
+    case "arcus":
+      return syncArcus(credentials);
   }
 }
 
@@ -1168,6 +1257,10 @@ export function publicCredentialSummary(
   provider: Provider,
   credentials: ProviderCredentials,
 ): string {
+  if (provider === "arcus") {
+    const address = credentials.arcusAddress?.trim() ?? "";
+    return address ? `${address.slice(0, 6)}…${address.slice(-4)} · #${credentials.arcusAccountIndex ?? 0}` : PROVIDER_META[provider].detail;
+  }
   if (provider === "okx_wallet") {
     const entries = credentials.walletEntries ?? [];
     const addresses = Array.from(

@@ -55,6 +55,8 @@ export type ProviderCredentials = {
   apiKey?: string;
   secretKey?: string;
   passphrase?: string;
+  arcusAddress?: string;
+  arcusAccountIndex?: number;
   walletEntries?: Array<{ address: string; chains: string[] }>;
 };
 

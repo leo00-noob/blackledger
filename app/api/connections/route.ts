@@ -180,10 +180,13 @@ export async function POST(request: Request) {
       if (!isProvider(provider)) {
         throw new ProviderError("연결 대상을 선택해 주세요.", 400);
       }
-      const credentials = (body.credentials ?? {}) as ProviderCredentials & Record<string, unknown>;
-      rejectWalletSecrets(credentials);
+      const submitted = (body.credentials ?? {}) as ProviderCredentials & Record<string, unknown>;
+      rejectWalletSecrets(submitted);
+      const credentials: ProviderCredentials = provider === "arcus"
+        ? { arcusAddress: submitted.arcusAddress, arcusAccountIndex: submitted.arcusAccountIndex }
+        : submitted;
 
-      // Credentials are verified against the provider before anything is saved.
+      // Confirm that the provider account can be read before saving the connection.
       const snapshot = await syncProvider(provider, credentials);
       const encryptedCredentials = await encryptJson(credentials);
       const now = snapshot.syncedAt;
