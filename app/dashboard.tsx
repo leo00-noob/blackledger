@@ -569,7 +569,7 @@ function liveChartData(portfolio: PortfolioResponse, range: Range) {
 }
 
 export function Dashboard() {
-  const [currency, setCurrency] = React.useState<Currency>("KRW")
+  const [currency, setCurrency] = React.useState<Currency>("USD")
   const [range, setRange] = React.useState<Range>("1M")
   const [activeView, setActiveView] = React.useState<View>("Overview")
   const [search, setSearch] = React.useState("")

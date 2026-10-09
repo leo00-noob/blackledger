@@ -992,33 +992,6 @@ async function okxGet<T>(
 
 const HYPEREVM_CHAIN = "999";
 const HYPEREVM_RPC = "https://rpc.hyperliquid.xyz/evm";
-const HYPEREVM_EXPLORER = "https://www.hyperscan.com/api/v2";
-const HYPEREVM_FALLBACK_TOKENS = [
-  { address: "0xb88339cb7199b77e23db6e890353e22632ba630f", symbol: "USDC", decimals: 6 },
-  { address: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb", symbol: "USD₮0", decimals: 6 },
-  { address: "0x5555555555555555555555555555555555555555", symbol: "WHYPE", decimals: 18 },
-  { address: "0xbe6727b535545c67d5caa73dea54865b92cf7907", symbol: "UETH", decimals: 18 },
-  { address: "0x9fdbda0a5e284c32744d2f17ee5c74b284993463", symbol: "UBTC", decimals: 8 },
-];
-
-async function hyperEvmRpc(method: string, params: unknown[]): Promise<string> {
-  const response = record(await fetchJson<unknown>(HYPEREVM_RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  }));
-  const result = response.result;
-  if (typeof result !== "string" || !/^0x[0-9a-fA-F]*$/.test(result)) {
-    throw new ProviderError(text(record(response.error).message) || "HyperEVM RPC 응답을 읽을 수 없습니다.");
-  }
-  return result;
-}
-
-function hyperEvmAmount(raw: string, decimals: number): number {
-  if (!/^\d+$/.test(raw) || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) return 0;
-  const amount = Number(BigInt(raw)) / 10 ** decimals;
-  return Number.isFinite(amount) ? amount : 0;
-}
 
 async function hyperEvmHoldings(address: string): Promise<{
   holdings: NormalizedHolding[];
@@ -1030,112 +1003,61 @@ async function hyperEvmHoldings(address: string): Promise<{
     return { holdings: [], warnings: [`${short}: HyperEVM 주소 형식이 올바르지 않습니다.`], ok: false };
   }
 
-  const warnings: string[] = [];
-  const tokens = new Map<string, { symbol: string; amount: number; exchangeRate: number }>();
-  let nativeAmount = 0;
-  let nativeOk = false;
+  let amount: number;
   try {
-    nativeAmount = hyperEvmAmount(BigInt(await hyperEvmRpc("eth_getBalance", [address, "latest"])).toString(), 18);
-    nativeOk = true;
-  } catch (error) {
-    warnings.push(`${short}: HyperEVM HYPE 잔고 조회 실패: ${cleanProviderError(error)}`);
-  }
-
-  let explorerOk = false;
-  try {
-    let next: UnknownRecord = {};
-    for (let page = 0; page < 5; page += 1) {
-      const url = new URL(`${HYPEREVM_EXPLORER}/addresses/${address}/tokens`);
-      url.searchParams.set("type", "ERC-20");
-      for (const [key, value] of Object.entries(next)) {
-        if (typeof value === "string" || typeof value === "number") url.searchParams.set(key, String(value));
-      }
-      const response = record(await fetchJson<unknown>(url.toString()));
-      if (!Array.isArray(response.items)) throw new ProviderError("HyperEVM 토큰 목록 형식이 올바르지 않습니다.");
-      for (const item of response.items) {
-        const row = record(item);
-        const token = record(row.token);
-        const contract = text(token.address_hash ?? token.address).toLowerCase();
-        if (!/^0x[0-9a-f]{40}$/.test(contract)) continue;
-        const symbol = normalizedSymbol(token.symbol);
-        const amount = hyperEvmAmount(text(row.value), Number(token.decimals));
-        if (!symbol || !amount) continue;
-        tokens.set(contract, { symbol, amount, exchangeRate: positive(token.exchange_rate) });
-      }
-      explorerOk = true;
-      next = record(response.next_page_params);
-      if (!Object.keys(next).length) break;
-      if (page === 4) warnings.push(`${short}: HyperEVM 토큰이 많아 일부 목록을 조회하지 못했습니다.`);
+    const response = record(await fetchJson<unknown>(HYPEREVM_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_getBalance",
+        params: [address, "latest"],
+      }),
+    }));
+    const balance = response.result;
+    if (typeof balance !== "string" || !/^0x[0-9a-fA-F]+$/.test(balance)) {
+      throw new ProviderError(text(record(response.error).message) || "HyperEVM RPC 응답을 읽을 수 없습니다.");
     }
+    amount = Number(BigInt(balance)) / 1e18;
+    if (!Number.isFinite(amount)) throw new ProviderError("HyperEVM HYPE 잔고가 올바르지 않습니다.");
   } catch (error) {
-    warnings.push(`${short}: HyperEVM 토큰 목록 조회 실패: ${cleanProviderError(error)}`);
+    return {
+      holdings: [],
+      warnings: [`${short}: HyperEVM HYPE 잔고 조회 실패: ${cleanProviderError(error)}`],
+      ok: false,
+    };
   }
 
-  // The explorer can lag behind the chain. Recheck common tokens against on-chain balanceOf.
-  let fallbackOk = false;
-  for (const token of HYPEREVM_FALLBACK_TOKENS) {
-    try {
-      const data = "0x70a08231" + address.slice(2).toLowerCase().padStart(64, "0");
-      const raw = await hyperEvmRpc("eth_call", [{ to: token.address, data }, "latest"]);
-      const amount = hyperEvmAmount(BigInt(raw).toString(), token.decimals);
-      const previous = tokens.get(token.address);
-      if (amount) tokens.set(token.address, {
-        symbol: token.symbol,
+  if (amount === 0) return { holdings: [], warnings: [], ok: true };
+
+  try {
+    const response = record(await fetchJson<unknown>(
+      "https://coins.llama.fi/prices/current/coingecko:hyperliquid",
+    ));
+    const priceUsd = positive(record(record(response.coins)["coingecko:hyperliquid"]).price);
+    if (!priceUsd) throw new ProviderError("HYPE 가격을 확인할 수 없습니다.");
+    return {
+      holdings: [{
+        symbol: "HYPE",
+        venue: "OKX Wallet",
+        account: `HyperEVM · ${short}`,
+        chain: HYPEREVM_CHAIN,
         amount,
-        exchangeRate: previous?.exchangeRate ?? 0,
-      });
-      else tokens.delete(token.address);
-      fallbackOk = true;
-    } catch {
-      // Keep the indexed balance for this token if the RPC call fails.
-    }
-  }
-  if (!explorerOk && fallbackOk) {
-    warnings.push(`${short}: HyperEVM 토큰 목록이 응답하지 않아 주요 토큰만 직접 확인했습니다.`);
-  }
-
-  const coinIds = ["coingecko:hyperliquid", ...tokens.keys()].map((id) =>
-    id.startsWith("0x") ? `hyperliquid:${id}` : id,
-  );
-  const prices = new Map<string, number>();
-  try {
-    for (let start = 0; start < coinIds.length; start += 40) {
-      const response = record(await fetchJson<unknown>(
-        `https://coins.llama.fi/prices/current/${coinIds.slice(start, start + 40).join(",")}`,
-      ));
-      for (const [id, value] of Object.entries(record(response.coins))) {
-        const price = positive(record(value).price);
-        if (price) prices.set(id.toLowerCase(), price);
-      }
-    }
+        priceUsd,
+        valueUsd: amount * priceUsd,
+        category: "wallet",
+      }],
+      warnings: [],
+      ok: true,
+    };
   } catch (error) {
-    warnings.push(`${short}: HyperEVM 가격 조회 실패: ${cleanProviderError(error)}`);
+    return {
+      holdings: [],
+      warnings: [`${short}: HyperEVM HYPE 가격 조회 실패: ${cleanProviderError(error)}`],
+      ok: true,
+    };
   }
-
-  const holdings: NormalizedHolding[] = [];
-  const add = (symbol: string, amount: number, priceUsd: number) => {
-    if (!amount) return;
-    if (!priceUsd) {
-      warnings.push(`${short}: HyperEVM ${symbol} 가격을 확인하지 못해 합산에서 제외했습니다.`);
-      return;
-    }
-    holdings.push({
-      symbol,
-      venue: "OKX Wallet",
-      account: `HyperEVM · ${short}`,
-      chain: HYPEREVM_CHAIN,
-      amount,
-      priceUsd,
-      valueUsd: amount * priceUsd,
-      category: "wallet",
-    });
-  };
-  add("HYPE", nativeAmount, prices.get("coingecko:hyperliquid") ?? 0);
-  for (const [contract, token] of tokens) {
-    add(token.symbol, token.amount,
-      prices.get(`hyperliquid:${contract}`) ?? token.exchangeRate);
-  }
-  return { holdings, warnings, ok: nativeOk || explorerOk || fallbackOk };
 }
 
 async function syncOkxWallet(

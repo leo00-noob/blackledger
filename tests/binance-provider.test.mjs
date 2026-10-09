@@ -70,7 +70,7 @@ test("includes USD-M wallet balance plus unrealized PnL and keeps AKE short expo
   }
 });
 
-test("OKX combines HyperEVM with its supported chains for both wallets", async () => {
+test("OKX combines native HyperEVM HYPE with supported chains for both wallets", async () => {
   const originalFetch = globalThis.fetch;
   const requested = [];
   const evmA = "0x1111111111111111111111111111111111111111";
@@ -101,19 +101,11 @@ test("OKX combines HyperEVM with its supported chains for both wallets", async (
         const hype = body.params[0] === evmA ? 1n : 2n;
         return json({ jsonrpc: "2.0", id: 1, result: "0x" + (hype * 10n ** 18n).toString(16) });
       }
-      if (body.method === "eth_call") {
-        const usdc = body.params[0].to.toLowerCase() === "0xb88339cb7199b77e23db6e890353e22632ba630f";
-        const walletA = body.params[0].data.endsWith(evmA.slice(2));
-        return json({ jsonrpc: "2.0", id: 1, result: "0x" + (usdc ? (walletA ? 5_000_000 : 10_000_000) : 0).toString(16) });
-      }
-    }
-    if (url.host === "www.hyperscan.com" && url.pathname.endsWith("/tokens")) {
-      return json({ items: [], next_page_params: null });
+      assert.equal(body.method, "eth_getBalance");
     }
     if (url.host === "coins.llama.fi") {
       return json({ coins: {
         "coingecko:hyperliquid": { price: 100 },
-        "hyperliquid:0xb88339cb7199b77e23db6e890353e22632ba630f": { price: 1 },
       } });
     }
     return json({ code: -1, msg: "Unexpected test URL" }, 400);
@@ -133,10 +125,11 @@ test("OKX combines HyperEVM with its supported chains for both wallets", async (
     };
     const snapshot = await syncProvider("okx_wallet", credentials);
 
-    assert.equal(snapshot.accountNetUsd, 725);
-    assert.equal(snapshot.holdings.length, 8);
+    assert.equal(snapshot.accountNetUsd, 710);
+    assert.equal(snapshot.holdings.length, 6);
     assert.ok(snapshot.holdings.some((holding) => holding.account === "HyperEVM · 0x1111…1111" && holding.symbol === "HYPE"));
-    assert.ok(snapshot.holdings.some((holding) => holding.account === "HyperEVM · 0x2222…2222" && holding.symbol === "USDC"));
+    assert.ok(snapshot.holdings.some((holding) => holding.account === "HyperEVM · 0x2222…2222" && holding.symbol === "HYPE"));
+    assert.ok(snapshot.holdings.filter((holding) => holding.chain === "999").every((holding) => holding.symbol === "HYPE"));
     assert.deepEqual(snapshot.warnings, []);
     assert.deepEqual(requested, [
       ["solana-new1", "501"],
