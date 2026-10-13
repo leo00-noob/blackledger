@@ -41,6 +41,7 @@ const DOCS: Record<Provider, string> = {
   bithumb: "https://apidocs.bithumb.com/docs/%EC%9D%B8%EC%A6%9D-%ED%86%A0%ED%81%B0-%EC%83%9D%EC%84%B1%ED%95%98%EA%B8%B0",
   arcus: "https://docs.arcus.xyz/api-reference/public/get-account",
   ondo_perps: "https://docs.ondoperps.xyz/api-reference/spot-api-guide",
+  entropy: "https://docs.entropy.io/",
 }
 
 type FormState = {
@@ -51,6 +52,7 @@ type FormState = {
   arcusAddress: string
   arcusAccountIndex: string
   ondoAddress: string
+  entropyAddress: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -61,6 +63,7 @@ const EMPTY_FORM: FormState = {
   arcusAddress: "",
   arcusAccountIndex: "0",
   ondoAddress: "",
+  entropyAddress: "",
 }
 
 const OKX_EVM_CHAIN_IDS = [
@@ -192,8 +195,10 @@ export function ConnectionsPanel({
         return
       }
       const credentials =
-        selected === "arcus"
-          ? {
+        selected === "entropy"
+          ? { entropyAddress: form.entropyAddress.trim() }
+          : selected === "arcus"
+            ? {
               arcusAddress: form.arcusAddress.trim(),
               arcusAccountIndex: Number(form.arcusAccountIndex),
             }
@@ -427,6 +432,8 @@ export function ConnectionsPanel({
                     ? "저장된 조회 키는 그대로 두고, 새 공개 주소와 체인만 추가합니다."
                     : selected === "arcus"
                       ? "Arcus의 공개 조회 API로 지갑 주소의 서브계정 잔고를 확인합니다. API 키와 서명키는 필요하지 않습니다."
+                      : selected === "entropy"
+                        ? "Entropy의 io 선물 계정과 포지션을 공개 지갑 주소로 조회합니다. API 키는 필요하지 않습니다."
                       : "저장 전에 실제 조회 요청으로 키를 검증합니다. 입력값은 성공 후 즉시 비웁니다."}
                 </DialogDescription>
               </DialogHeader>
@@ -466,7 +473,13 @@ export function ConnectionsPanel({
                   </div>
                 ) : null}
 
-                {selected === "arcus" ? (
+                {selected === "entropy" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="entropy-address">Entropy 지갑 주소</Label>
+                    <Input id="entropy-address" value={form.entropyAddress} onChange={(event) => setForm((current) => ({ ...current, entropyAddress: event.target.value }))} placeholder="0x…" className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="off" spellCheck={false} />
+                    <p className="text-xs leading-5 text-neutral-500">Entropy에서 거래할 때 연결한 EVM 지갑 주소를 입력하세요. io:OAI를 포함한 Entropy 선물 포지션을 조회합니다.</p>
+                  </div>
+                ) : selected === "arcus" ? (
                    <>
                      <div className="space-y-2">
                        <Label htmlFor="arcus-address">Arcus 지갑 주소</Label>
@@ -519,13 +532,18 @@ export function ConnectionsPanel({
                     Spot 잔고의 전체 수량(주문 예약분 포함), Perps 계정 평가액과 열린 포지션을 조회합니다. 거래·이체 권한은 필요하지 않습니다.
                   </p>
                 ) : null}
+                {selected === "entropy" ? (
+                  <p className="border-l-2 border-black pl-3 text-xs leading-5 text-neutral-500">
+                    Hyperliquid 통합 계정은 다른 DEX와 담보를 공유합니다. 이 경우 Entropy 포지션을 표시하고 공유 담보는 BL 총액에 중복 합산하지 않습니다.
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between gap-4 border-t border-neutral-300 p-6">
                 <p className="max-w-sm text-xs leading-5 text-neutral-500">
                   {selected === "okx_wallet" && byProvider.has("okx_wallet")
                     ? "공개 주소만 추가되며 개인키나 시드 문구는 요청하지 않습니다."
-                    : selected === "arcus"
+                    : selected === "arcus" || selected === "entropy"
                       ? "공개 주소만 사용합니다. API Signing Key는 입력하지 마세요."
                       : "출금·주문 권한이 켜진 키는 사용하지 마세요."}
                 </p>
