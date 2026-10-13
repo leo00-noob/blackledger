@@ -16,17 +16,15 @@ test("signs view requests and includes Ondo Spot and Perps without double counti
   globalThis.fetch = async (url, init) => {
     const path = new URL(url).pathname;
     calls.push(path);
-    if (path !== "/v1/spot/ticker") {
-      const headers = init.headers;
-      assert.equal(init.method, "GET");
-      assert.equal(headers["ONDO-KEY-ID"], credentials.apiKey);
-      assert.equal(
-        headers["ONDO-SIGN"],
-        createHmac("sha256", credentials.secretKey)
-          .update(`${headers["ONDO-TIMESTAMP"]}GET${path}`)
-          .digest("hex"),
-      );
-    }
+    const headers = init.headers;
+    assert.equal(init.method, "GET");
+    assert.equal(headers["ONDO-KEY-ID"], credentials.apiKey);
+    assert.equal(
+      headers["ONDO-SIGN"],
+      createHmac("sha256", credentials.secretKey)
+        .update(`${headers["ONDO-TIMESTAMP"]}GET${path}`)
+        .digest("hex"),
+    );
     const results = {
       "/v1/account": { identifier: address.toUpperCase().replace("0X", "0x") },
       "/v1/spot/balances": [

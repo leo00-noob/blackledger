@@ -90,9 +90,9 @@ export async function syncOndoPerps(credentials: ProviderCredentials): Promise<P
   const tickerByCoin = new Map<string, number>();
   if (needsPrices) {
     try {
-      const tickers = await fetchJson<ApiEnvelope>(`${BASE_URL}/v1/spot/ticker`, { cache: "no-store" });
-      if (tickers.success !== true || !Array.isArray(tickers.result)) throw new Error("invalid ticker result");
-      for (const raw of tickers.result) {
+      const tickers = await signedGet("/v1/spot/ticker", credentials);
+      if (!Array.isArray(tickers)) throw new Error("invalid ticker result");
+      for (const raw of tickers) {
         const row = object(raw);
         const coin = String(row.baseCurrency ?? "").toUpperCase();
         const quote = String(row.quoteCurrency ?? "").toUpperCase();
