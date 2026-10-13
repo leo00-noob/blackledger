@@ -15,6 +15,7 @@ import {
   withBinanceSpotFailover,
 } from "@/lib/server/binance-endpoints";
 import { binanceFuturesWsRequests } from "@/lib/server/binance-ws";
+import { syncOndoPerps } from "@/lib/server/ondo-perps";
 import { hmac, jwtHs256 } from "@/lib/server/crypto";
 import {
   cleanProviderError,
@@ -1326,6 +1327,8 @@ export async function syncProvider(
       return syncOkxWallet(credentials);
     case "arcus":
       return syncArcus(credentials);
+    case "ondo_perps":
+      return syncOndoPerps(credentials);
   }
 }
 
@@ -1333,6 +1336,10 @@ export function publicCredentialSummary(
   provider: Provider,
   credentials: ProviderCredentials,
 ): string {
+  if (provider === "ondo_perps") {
+    const address = credentials.ondoAddress?.trim() ?? "";
+    return address ? `${address.slice(0, 6)}…${address.slice(-4)} · 1702 EVM` : PROVIDER_META[provider].detail;
+  }
   if (provider === "arcus") {
     const address = credentials.arcusAddress?.trim() ?? "";
     return address ? `${address.slice(0, 6)}…${address.slice(-4)} · #${credentials.arcusAccountIndex ?? 0}` : PROVIDER_META[provider].detail;

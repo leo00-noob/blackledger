@@ -40,6 +40,7 @@ const DOCS: Record<Provider, string> = {
   upbit: "https://global-docs.upbit.com/reference/auth",
   bithumb: "https://apidocs.bithumb.com/docs/%EC%9D%B8%EC%A6%9D-%ED%86%A0%ED%81%B0-%EC%83%9D%EC%84%B1%ED%95%98%EA%B8%B0",
   arcus: "https://docs.arcus.xyz/api-reference/public/get-account",
+  ondo_perps: "https://docs.ondoperps.xyz/api-reference/spot-api-guide",
 }
 
 type FormState = {
@@ -49,6 +50,7 @@ type FormState = {
   walletEntries: string
   arcusAddress: string
   arcusAccountIndex: string
+  ondoAddress: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -58,6 +60,7 @@ const EMPTY_FORM: FormState = {
   walletEntries: "",
   arcusAddress: "",
   arcusAccountIndex: "0",
+  ondoAddress: "",
 }
 
 const OKX_EVM_CHAIN_IDS = [
@@ -200,6 +203,12 @@ export function ConnectionsPanel({
               secretKey: form.secretKey.trim(),
               passphrase: form.passphrase.trim(),
               walletEntries: parseWalletEntries(form.walletEntries),
+            }
+          : selected === "ondo_perps"
+          ? {
+              apiKey: form.apiKey.trim(),
+              secretKey: form.secretKey.trim(),
+              ondoAddress: form.ondoAddress.trim(),
             }
           : {
               apiKey: form.apiKey.trim(),
@@ -472,13 +481,20 @@ export function ConnectionsPanel({
                  ) : selected !== "okx_wallet" || !byProvider.has("okx_wallet") ? (
                    <>
                     <div className="space-y-2">
-                      <Label htmlFor="api-key">API Key</Label>
+                      <Label htmlFor="api-key">{selected === "ondo_perps" ? "API Key ID" : "API Key"}</Label>
                       <Input id="api-key" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="off" spellCheck={false} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="secret-key">Secret Key</Label>
+                      <Label htmlFor="secret-key">{selected === "ondo_perps" ? "API Secret" : "Secret Key"}</Label>
                       <Input id="secret-key" type="password" value={form.secretKey} onChange={(event) => setForm((current) => ({ ...current, secretKey: event.target.value }))} className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="new-password" spellCheck={false} />
                     </div>
+                    {selected === "ondo_perps" ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="ondo-address">1702 EVM 지갑 주소</Label>
+                        <Input id="ondo-address" value={form.ondoAddress} onChange={(event) => setForm((current) => ({ ...current, ondoAddress: event.target.value }))} placeholder="0x…" className="rounded-none border-neutral-300 font-mono shadow-none focus-visible:border-black focus-visible:ring-0" autoComplete="off" spellCheck={false} />
+                        <p className="text-xs leading-5 text-neutral-500">Ondo에서 이 지갑으로 로그인해 View 권한만 있는 API 키를 만든 뒤, Key ID와 Secret 전체를 입력하세요. 키의 계정 주소와 지갑 주소가 일치하는지 확인합니다.</p>
+                      </div>
+                    ) : null}
                     {(selected === "bitget" || selected === "okx_wallet") ? (
                       <div className="space-y-2">
                         <Label htmlFor="passphrase">API Passphrase</Label>
@@ -496,6 +512,11 @@ export function ConnectionsPanel({
                 {selected === "binance" ? (
                   <p className="border-l-2 border-black pl-3 text-xs leading-5 text-neutral-500">
                     System generated(HMAC) 키에서 Enable Reading만 켜세요. 거래·출금 권한은 끄고, 개인 기기 IP로 제한한 키는 이 호스팅 서버에서 사용할 수 없습니다.
+                  </p>
+                ) : null}
+                {selected === "ondo_perps" ? (
+                  <p className="border-l-2 border-black pl-3 text-xs leading-5 text-neutral-500">
+                    Spot 잔고의 전체 수량(주문 예약분 포함), Perps 계정 평가액과 열린 포지션을 조회합니다. 거래·이체 권한은 필요하지 않습니다.
                   </p>
                 ) : null}
               </div>

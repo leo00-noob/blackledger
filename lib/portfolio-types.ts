@@ -6,6 +6,7 @@ export const PROVIDERS = [
   "upbit",
   "bithumb",
   "arcus",
+  "ondo_perps",
 ] as const;
 
 export type Provider = (typeof PROVIDERS)[number];
@@ -49,6 +50,11 @@ export const PROVIDER_META: Record<
     type: "Exchange",
     detail: "Robinhood Chain · perps · stock tokens",
   },
+  ondo_perps: {
+    name: "Ondo Perps",
+    type: "Exchange",
+    detail: "Spot · Perps · private markets",
+  },
 };
 
 export type ProviderCredentials = {
@@ -57,6 +63,7 @@ export type ProviderCredentials = {
   passphrase?: string;
   arcusAddress?: string;
   arcusAccountIndex?: number;
+  ondoAddress?: string;
   walletEntries?: Array<{ address: string; chains: string[] }>;
 };
 
