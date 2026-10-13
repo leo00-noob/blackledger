@@ -3,7 +3,7 @@
 개인용 암호화폐 통합 대시보드. Binance(현물·Funding·USDⓈ-M 선물), Bybit, Bitget, Upbit, Bithumb,
 OKX Wallet(멀티체인), Ondo Perps(현물·선물), Entropy(io 선물)를 읽기 전용 API로 모아 원화 기준으로 보여줍니다.
 
-Entropy 연결은 거래에 사용한 EVM 지갑 공개 주소만 필요합니다. Hyperliquid Info API에서 `dex: "io"`의 선물 포지션과 계정 상태를 조회합니다. 표준 계정은 io DEX의 계정 평가액을 합산합니다. 통합 계정과 포트폴리오 마진은 담보가 다른 DEX와 공유되므로 Entropy 포지션만 표시하고 담보는 BL 총액에 합산하지 않습니다.
+Entropy 연결은 거래에 사용한 EVM 지갑 공개 주소만 필요합니다. Hyperliquid Info API에서 `dex: "io"`의 선물 포지션과 계정 상태를 조회합니다. 표준 계정은 io DEX의 계정 평가액을 합산합니다. 통합 계정과 포트폴리오 마진은 공유 USDC 잔고를 한 번 합산하고 Entropy 포지션의 미실현 손익을 반영합니다. 공유 담보가 다른 Hyperliquid DEX의 거래에도 쓰일 수 있으므로 계정 평가액에는 Hyperliquid 전체 USDC가 포함됩니다.
 
 Ondo Perps 연결은 해당 EVM 지갑으로 발급한 `View` 전용 API Key ID와 API Secret, 지갑 공개 주소를 사용합니다. Ondo의 Spot `total` 잔고(예약 수량 포함)와 Perps 계정 평가액·열린 포지션을 조회합니다. API 키의 계정 주소가 입력 주소와 다르면 연결을 저장하지 않습니다. OAI 등 현물 자산의 `usdValue`가 없을 때는 Ondo 현물 티커를 사용하며, 가격도 없으면 잔고 수량을 남기고 평가액 경고를 표시합니다.
 

@@ -12,7 +12,9 @@ function mockInfo(mode) {
     assert.equal(init.method, "POST");
     const body = JSON.parse(init.body);
     calls.push(body);
-    return new Response(JSON.stringify(body.type === "userAbstraction" ? mode : {
+    return new Response(JSON.stringify(body.type === "userAbstraction" ? mode : body.type === "spotClearinghouseState" ? {
+      balances: [{ coin: "USDC", token: 0, total: "90", hold: "30" }],
+    } : {
       marginSummary: { accountValue: "125.5" },
       assetPositions: [{ position: {
         coin: "io:OAI", szi: "-2", positionValue: "200", entryPx: "95",
@@ -41,14 +43,16 @@ test("reads only the Entropy DEX and reports standard account equity once", asyn
   } finally { mock.restore(); }
 });
 
-test("does not attribute shared unified collateral to Entropy", async () => {
+test("includes shared unified collateral once and Entropy's unrealized PnL", async () => {
   const mock = mockInfo("unifiedAccount");
   try {
     const snapshot = await syncEntropy({ entropyAddress: address });
-    assert.equal(snapshot.accountNetUsd, 0);
-    assert.deepEqual(snapshot.holdings, []);
+    assert.equal(snapshot.accountNetUsd, 80);
+    assert.equal(snapshot.holdings[0].valueUsd, 80);
+    assert.equal(snapshot.holdings[0].account, "Unified equity · io PnL");
     assert.equal(snapshot.positions.length, 1);
-    assert.match(snapshot.warnings[0], /공유 담보/);
+    assert.deepEqual(snapshot.warnings, []);
+    assert.deepEqual(mock.calls[2], { type: "spotClearinghouseState", user: address });
   } finally { mock.restore(); }
 });
 

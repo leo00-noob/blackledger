@@ -44,7 +44,6 @@ export async function syncEntropy(credentials: ProviderCredentials): Promise<Pro
   }
 
   const positions: NormalizedPosition[] = [];
-  const warnings: string[] = [];
   for (const item of state.assetPositions) {
     const position = row(row(item).position);
     const coin = String(position.coin ?? "");
@@ -75,24 +74,35 @@ export async function syncEntropy(credentials: ProviderCredentials): Promise<Pro
   if (!unified && equity === null) {
     throw new ProviderError("Entropy 선물 계정 평가액을 확인할 수 없습니다.");
   }
+  let accountNetUsd = equity ?? 0;
   if (unified) {
-    warnings.push("Hyperliquid 통합 계정의 담보는 여러 DEX와 공유됩니다. Entropy 포지션만 표시하며 공유 담보는 중복 합산하지 않습니다.");
+    // Unified collateral lives in HyperCore's spot clearinghouse, not in a
+    // per-DEX margin summary. Count the shared USDC balance once, then add
+    // only Entropy's open-position PnL to arrive at this connection's equity.
+    const spot = row(await info("spotClearinghouseState", address));
+    if (!Array.isArray(spot.balances)) {
+      throw new ProviderError("Hyperliquid 통합 계정의 현물 잔고를 확인할 수 없습니다.");
+    }
+    const usdc = spot.balances
+      .map(row)
+      .filter((balance) => balance.token === 0 || balance.coin === "USDC")
+      .reduce((sum, balance) => sum + (finite(balance.total) ?? 0), 0);
+    accountNetUsd = usdc + positions.reduce((sum, position) => sum + position.unrealizedPnlUsd, 0);
   }
-  const accountNetUsd = unified ? 0 : equity ?? 0;
   return {
     provider: "entropy",
     accountNetUsd,
     holdings: accountNetUsd === 0 ? [] : [{
-      symbol: "USDC",
-      venue: "Entropy Perps",
-      account: "Perps equity",
+      symbol: "USD",
+      venue: unified ? "Hyperliquid" : "Entropy Perps",
+      account: unified ? "Unified equity · io PnL" : "Perps equity",
       amount: accountNetUsd,
       priceUsd: 1,
       valueUsd: accountNetUsd,
       category: "collateral",
     }],
     positions,
-    warnings,
+    warnings: [],
     coverage: { derivatives: true },
     syncedAt: new Date().toISOString(),
   };
