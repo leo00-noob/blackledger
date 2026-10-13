@@ -534,7 +534,7 @@ export function ConnectionsPanel({
                 ) : null}
                 {selected === "entropy" ? (
                   <p className="border-l-2 border-black pl-3 text-xs leading-5 text-neutral-500">
-                    Hyperliquid 통합 계정은 다른 DEX와 담보를 공유합니다. 이 경우 Entropy 포지션을 표시하고 공유 담보는 BL 총액에 중복 합산하지 않습니다.
+                    Hyperliquid 통합 계정은 공유 USDC 잔고를 한 번 합산하고 Entropy 포지션의 미실현 손익을 반영합니다.
                   </p>
                 ) : null}
               </div>
