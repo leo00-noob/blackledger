@@ -184,6 +184,8 @@ export async function POST(request: Request) {
       rejectWalletSecrets(submitted);
       const credentials: ProviderCredentials = provider === "arcus"
         ? { arcusAddress: submitted.arcusAddress, arcusAccountIndex: submitted.arcusAccountIndex }
+        : provider === "entropy"
+          ? { entropyAddress: submitted.entropyAddress }
         : provider === "ondo_perps"
           ? { apiKey: submitted.apiKey, secretKey: submitted.secretKey, ondoAddress: submitted.ondoAddress }
           : submitted;

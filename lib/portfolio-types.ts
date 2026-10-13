@@ -7,6 +7,7 @@ export const PROVIDERS = [
   "bithumb",
   "arcus",
   "ondo_perps",
+  "entropy",
 ] as const;
 
 export type Provider = (typeof PROVIDERS)[number];
@@ -55,6 +56,11 @@ export const PROVIDER_META: Record<
     type: "Exchange",
     detail: "Spot · Perps · private markets",
   },
+  entropy: {
+    name: "Entropy",
+    type: "Exchange",
+    detail: "Hyperliquid · io perps",
+  },
 };
 
 export type ProviderCredentials = {
@@ -64,6 +70,7 @@ export type ProviderCredentials = {
   arcusAddress?: string;
   arcusAccountIndex?: number;
   ondoAddress?: string;
+  entropyAddress?: string;
   walletEntries?: Array<{ address: string; chains: string[] }>;
 };
 
