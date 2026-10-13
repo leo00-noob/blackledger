@@ -1,7 +1,9 @@
 # Black Ledger
 
 개인용 암호화폐 통합 대시보드. Binance(현물·Funding·USDⓈ-M 선물), Bybit, Bitget, Upbit, Bithumb,
-OKX Wallet(멀티체인)을 읽기 전용 API로 모아 원화 기준으로 보여줍니다.
+OKX Wallet(멀티체인), Ondo Perps(현물·선물)를 읽기 전용 API로 모아 원화 기준으로 보여줍니다.
+
+Ondo Perps 연결은 해당 EVM 지갑으로 발급한 `View` 전용 API Key ID와 API Secret, 지갑 공개 주소를 사용합니다. Ondo의 Spot `total` 잔고(예약 수량 포함)와 Perps 계정 평가액·열린 포지션을 조회합니다. API 키의 계정 주소가 입력 주소와 다르면 연결을 저장하지 않습니다. OAI 등 현물 자산의 `usdValue`가 없을 때는 Ondo 현물 티커를 사용하며, 가격도 없으면 잔고 수량을 남기고 평가액 경고를 표시합니다.
 
 - Next.js 16 (App Router) · Vercel 서울 리전(icn1)
 - DB: Turso(libSQL) — 스키마는 `db/schema.ts`, 테이블은 첫 요청 때 자동 생성(`db/bootstrap.ts`)

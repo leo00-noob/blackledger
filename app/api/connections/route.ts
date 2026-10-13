@@ -184,7 +184,9 @@ export async function POST(request: Request) {
       rejectWalletSecrets(submitted);
       const credentials: ProviderCredentials = provider === "arcus"
         ? { arcusAddress: submitted.arcusAddress, arcusAccountIndex: submitted.arcusAccountIndex }
-        : submitted;
+        : provider === "ondo_perps"
+          ? { apiKey: submitted.apiKey, secretKey: submitted.secretKey, ondoAddress: submitted.ondoAddress }
+          : submitted;
 
       // Confirm that the provider account can be read before saving the connection.
       const snapshot = await syncProvider(provider, credentials);
@@ -238,7 +240,7 @@ export async function POST(request: Request) {
         throw new ProviderError("OKX Wallet 연결에서만 체인을 추가할 수 있습니다.", 400);
       }
       const additions = Array.isArray(body.walletEntries)
-        ? (body.walletEntries as ProviderCredentials["walletEntries"])
+        ? (body.walletEntries as NonNullable<ProviderCredentials["walletEntries"]>)
         : [];
       if (!additions.length) {
         throw new ProviderError("추가할 공개 주소와 체인을 입력해 주세요.", 400);

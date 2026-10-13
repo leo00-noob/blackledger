@@ -39,6 +39,8 @@ const ASSET_NAMES: Record<string, string> = {
   HYPE: "Hyperliquid",
   AKE: "Akedo",
   USDG: "Global Dollar",
+  OAI: "OpenAI Private Market",
+  OPAIPON: "OpenAI Private Market Note",
 };
 
 type AssetAccumulator = {
