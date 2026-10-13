@@ -343,8 +343,8 @@ const DEFAULT_WIDGET_ORDER: WidgetId[] = [
 
 const DEFAULT_VISIBLE_WIDGETS: WidgetId[] = ["netWorth", "performance", "exposure", "allocation", "positions"]
 
-function formatMoney(value: number, currency: Currency, compact = false) {
-  const converted = currency === "KRW" ? value : value / FX_RATE
+function formatMoneyWithRate(value: number, currency: Currency, fxKrw: number, compact = false) {
+  const converted = currency === "KRW" ? value : value / fxKrw
   return new Intl.NumberFormat(currency === "KRW" ? "ko-KR" : "en-US", {
     style: "currency",
     currency,
@@ -353,9 +353,9 @@ function formatMoney(value: number, currency: Currency, compact = false) {
   }).format(converted)
 }
 
-function formatSignedMoney(value: number, currency: Currency) {
+function formatSignedMoneyWithRate(value: number, currency: Currency, fxKrw: number) {
   const sign = value >= 0 ? "+" : "−"
-  return `${sign}${formatMoney(Math.abs(value), currency)}`
+  return `${sign}${formatMoneyWithRate(Math.abs(value), currency, fxKrw)}`
 }
 
 function buildChartData(range: Range, totalAssets = TOTAL_ASSETS) {
@@ -395,20 +395,22 @@ function ChartTooltip({
   payload,
   label,
   currency,
+  fxKrw,
 }: {
   active?: boolean
   payload?: Array<{ payload: { value: number; change: number } }>
   label?: string
   currency: Currency
+  fxKrw: number
 }) {
   if (!active || !payload?.length) return null
   const point = payload[0].payload
   return (
     <div className="border border-black bg-white px-4 py-3 text-sm shadow-none">
       <p className="mb-2 text-xs uppercase tracking-[0.14em] text-neutral-500">{label}</p>
-      <p className="font-semibold tabular-nums">{formatMoney(point.value, currency)}</p>
+      <p className="font-semibold tabular-nums">{formatMoneyWithRate(point.value, currency, fxKrw)}</p>
       <p className={`mt-1 text-xs tabular-nums ${point.change >= 0 ? "text-black" : "text-neutral-500"}`}>
-        {formatSignedMoney(point.change, currency)}
+        {formatSignedMoneyWithRate(point.change, currency, fxKrw)}
       </p>
     </div>
   )
@@ -589,6 +591,11 @@ export function Dashboard() {
   const [portfolio, setPortfolio] = React.useState<PortfolioResponse | null>(null)
   const [portfolioError, setPortfolioError] = React.useState<string | null>(null)
   const binanceCoverageSyncAttempted = React.useRef(false)
+  const fxKrw = portfolio?.fxKrw ?? FX_RATE
+  const formatMoney = (value: number, displayCurrency: Currency, compact = false) =>
+    formatMoneyWithRate(value, displayCurrency, fxKrw, compact)
+  const formatSignedMoney = (value: number, displayCurrency: Currency) =>
+    formatSignedMoneyWithRate(value, displayCurrency, fxKrw)
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1203,7 +1210,7 @@ export function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 14, right: 4, bottom: 0, left: 4 }}>
                   <XAxis dataKey="date" hide />
-                  <RechartsTooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#a3a3a3", strokeDasharray: "3 3" }} />
+                  <RechartsTooltip content={<ChartTooltip currency={currency} fxKrw={fxKrw} />} cursor={{ stroke: "#a3a3a3", strokeDasharray: "3 3" }} />
                   <Line type="monotone" dataKey="value" stroke="#050505" strokeWidth={2.4} dot={false} activeDot={{ r: 4, fill: "#050505", stroke: "#ffffff", strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
