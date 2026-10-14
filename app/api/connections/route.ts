@@ -10,6 +10,7 @@ import {
   type ProviderSnapshot,
 } from "@/lib/portfolio-types";
 import { getApiUser, unauthorized } from "@/lib/server/auth";
+import { forbiddenOrigin, trustedOrigin } from "@/lib/server/request-security";
 import { decryptJson, encryptJson } from "@/lib/server/crypto";
 import { cleanProviderError, ProviderError } from "@/lib/server/http";
 import { buildPortfolio, connectionSummary } from "@/lib/server/portfolio";
@@ -159,6 +160,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!trustedOrigin(request)) return forbiddenOrigin();
   const user = await getApiUser(request);
   if (!user) return unauthorized();
   await ensureDatabase();

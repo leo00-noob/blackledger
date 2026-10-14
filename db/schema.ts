@@ -63,3 +63,15 @@ export const costBasisOverrides = sqliteTable(
     index("cost_basis_user_idx").on(table.userId),
   ],
 );
+
+export const sessions = sqliteTable("sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [index("sessions_expires_idx").on(table.expiresAt)]);
+
+export const loginFailures = sqliteTable("login_failures", {
+  key: text("key").primaryKey(),
+  windowStart: integer("window_start").notNull(),
+  count: integer("count").notNull(),
+});
