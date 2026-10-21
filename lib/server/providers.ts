@@ -776,10 +776,18 @@ function bitgetNumber(value: unknown, field: string): number {
   return Number(value);
 }
 
-function bitgetPositions(data: unknown, unified: boolean): NormalizedPosition[] {
-  const rows = unified ? record(data).list : data;
+function bitgetPositions(data: unknown, unified: boolean, category = "USDT-FUTURES"): NormalizedPosition[] {
+  // Accept a direct data array as well as the documented UTA data.list.
+  // An explicit empty array is a list; null or missing data is not.
+  const rows = unified && !Array.isArray(data) ? record(data).list : data;
   if (!Array.isArray(rows)) {
-    throw new ProviderError("Bitget 포지션 응답에 목록이 없습니다. 이전 동기화 데이터를 유지합니다.");
+    // Describe only types and known container fields, never account values.
+    const dataType = data === null ? "null" : typeof data;
+    const list = record(data).list;
+    const listType = list === null ? "null" : typeof list;
+    throw new ProviderError(
+      `Bitget ${unified ? "UTA" : "Classic"} ${category} 포지션 응답에 목록이 없습니다 (data=${dataType}, list=${listType}). 이전 동기화 데이터를 유지합니다.`,
+    );
   }
   return rows.flatMap((item) => {
     const row = record(item);
@@ -825,9 +833,9 @@ async function syncBitgetUnified(
   const responses = await Promise.all(["USDT-FUTURES", "USDC-FUTURES"].map(async (category) => {
     const response = await bitgetGet<UnknownRecord>("/api/v3/position/current-position", credentials, { category });
     assertBitgetResponse(response);
-    return response;
+    return bitgetPositions(response.data, true, category);
   }));
-  const positions = responses.flatMap((response) => bitgetPositions(response.data, true));
+  const positions = responses.flat();
   const holdings: NormalizedHolding[] = assets.assets.flatMap((item) => {
     const row = record(item);
     const amount = bitgetNumber(row.equity, "equity");

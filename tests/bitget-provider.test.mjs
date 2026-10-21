@@ -80,6 +80,42 @@ test("UTA keeps both hedge sides and USDC positions including negative PnL", asy
     [["ETH", "LONG", 4000, -10], ["ETH", "SHORT", 6000, 28]]);
 });
 
+test("UTA accepts a direct data array containing open positions", async (t) => {
+  mock(t, (url) => {
+    if (url.pathname.endsWith("/current-position")) {
+      return ok(url.searchParams.get("category") === "USDT-FUTURES" ? [position] : []);
+    }
+    return unified(url);
+  });
+  const result = await syncProvider("bitget", credentials);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].symbol, "AKE");
+  assert.equal(result.positions[0].side, "SHORT");
+  assert.equal(result.positions[0].amount, 20000);
+  assert.equal(result.positions[0].unrealizedPnlUsd, 28);
+});
+
+test("an empty direct USDC array does not block documented USDT positions", async (t) => {
+  mock(t, (url) => url.pathname.endsWith("/current-position") &&
+    url.searchParams.get("category") === "USDC-FUTURES" ? ok([]) : unified(url));
+  const result = await syncProvider("bitget", credentials);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].symbol, "AKE");
+});
+
+test("both empty direct arrays successfully clear positions", async (t) => {
+  mock(t, (url) => url.pathname.endsWith("/current-position") ? ok([]) : unified(url));
+  assert.deepEqual((await syncProvider("bitget", credentials)).positions, []);
+});
+
+for (const data of [null, { list: null }, { list: {} }, "invalid"]) {
+  test("unknown response types retain the snapshot and identify the failing category", async (t) => {
+    mock(t, (url) => url.pathname.endsWith("/current-position") &&
+      url.searchParams.get("category") === "USDC-FUTURES" ? ok(data) : unified(url));
+    await assert.rejects(syncProvider("bitget", credentials), /UTA USDC-FUTURES.*data=.*list=/);
+  });
+}
+
 for (const status of [200, 400]) {
   test(`Classic falls back only on explicit 25245 (HTTP ${status}) and retains v2 fields`, async (t) => {
     mock(t, (url) => {
