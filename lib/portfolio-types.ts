@@ -34,7 +34,7 @@ export const PROVIDER_META: Record<
   bitget: {
     name: "Bitget",
     type: "Exchange",
-    detail: "Spot · USDT futures",
+    detail: "Classic · Unified · USDT/USDC futures",
   },
   upbit: {
     name: "Upbit",

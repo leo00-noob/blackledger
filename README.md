@@ -31,7 +31,17 @@ Cloudflare 대역의 요청을 WAF에서 거절해 선물 잔고·포지션이 �
 
 ## 테스트
 
+Bitget은 `/api/v3/account/assets`로 통합 계정 자산을 조회하고,
+`/api/v3/position/current-position`의 USDT·USDC 선물을 읽습니다.
+UTA 관리·거래 **읽기 권한**이 필요하며, 쓰기/출금 권한은 필요 없습니다.
+공유 담보는 한 번만 합산하고 순자산은 `accountEquity`를 사용합니다.
+자산별 평가액 합과 계정 평가액의 차이는 `Unified equity adjustment`로 표시합니다.
+Classic 계정임을 명시하는 `25245` 응답에만 기존 v2 현물·USDT 선물 조회로 전환합니다.
+포지션 조회 실패 시 동기화를 실패 처리하여 이전 스냅샷을 유지합니다.
+Coin-M 선물 및 별도 펀딩 계정은 현재 Bitget 조회 범위에서 제외됩니다.
+조사 근거와 배포 확인 절차는 [Bitget UTA 조사 노트](docs/bitget-unified-account.md)를 참고하세요.
+
 ```
 npm test
 ```
-Binance 선물 폴백, 서명, 로그인 세션을 네트워크 없이 검증합니다.
+Bitget 통합/Classic 계정·포지션·오류 처리, Binance 선물 폴백, 서명, 로그인 세션을 네트워크 없이 검증합니다.
