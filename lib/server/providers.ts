@@ -778,8 +778,13 @@ function bitgetNumber(value: unknown, field: string): number {
 
 function bitgetPositions(data: unknown, unified: boolean, category = "USDT-FUTURES"): NormalizedPosition[] {
   // Accept a direct data array as well as the documented UTA data.list.
-  // An explicit empty array is a list; null or missing data is not.
-  const rows = unified && !Array.isArray(data) ? record(data).list : data;
+  // UTA also represents an empty category as data: { list: null }.
+  // Only the explicit nested null is empty; missing lists/data still fail.
+  // The caller has already checked that the API envelope reports success.
+  const nestedList = record(data).list;
+  const rows = unified && !Array.isArray(data)
+    ? nestedList === null ? [] : nestedList
+    : data;
   if (!Array.isArray(rows)) {
     // Describe only types and known container fields, never account values.
     const dataType = data === null ? "null" : typeof data;

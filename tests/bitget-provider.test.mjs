@@ -108,7 +108,41 @@ test("both empty direct arrays successfully clear positions", async (t) => {
   assert.deepEqual((await syncProvider("bitget", credentials)).positions, []);
 });
 
-for (const data of [null, { list: null }, { list: {} }, "invalid"]) {
+test("USDC list:null does not block open USDT positions", async (t) => {
+  mock(t, (url) => url.pathname.endsWith("/current-position") &&
+    url.searchParams.get("category") === "USDC-FUTURES" ? ok({ list: null }) : unified(url));
+  const result = await syncProvider("bitget", credentials);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].symbol, "AKE");
+  assert.equal(result.positions[0].side, "SHORT");
+  assert.equal(result.positions[0].amount, 20000);
+  assert.equal(result.accountNetUsd, 1025);
+});
+
+test("USDT list:null does not block open USDC positions", async (t) => {
+  mock(t, (url) => {
+    if (!url.pathname.endsWith("/current-position")) return unified(url);
+    return ok({ list: url.searchParams.get("category") === "USDT-FUTURES" ? null :
+      [{ ...position, symbol: "ETHUSDC" }] });
+  });
+  const result = await syncProvider("bitget", credentials);
+  assert.equal(result.positions.length, 1);
+  assert.equal(result.positions[0].symbol, "ETH");
+});
+
+test("two successful list:null categories produce an empty position snapshot", async (t) => {
+  mock(t, (url) => url.pathname.endsWith("/current-position") ? ok({ list: null }) : unified(url));
+  assert.deepEqual((await syncProvider("bitget", credentials)).positions, []);
+});
+
+test("list:null on a failed API envelope never becomes an empty snapshot", async (t) => {
+  mock(t, (url) => url.pathname.endsWith("/current-position") &&
+    url.searchParams.get("category") === "USDC-FUTURES" ?
+    { code: "25620", msg: "permission denied", data: { list: null } } : unified(url));
+  await assert.rejects(syncProvider("bitget", credentials), /25620/);
+});
+
+for (const data of [null, { list: {} }, "invalid"]) {
   test("unknown response types retain the snapshot and identify the failing category", async (t) => {
     mock(t, (url) => url.pathname.endsWith("/current-position") &&
       url.searchParams.get("category") === "USDC-FUTURES" ? ok(data) : unified(url));
