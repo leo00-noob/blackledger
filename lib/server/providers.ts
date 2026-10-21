@@ -757,27 +757,139 @@ async function bitgetGet<T>(
   });
 }
 
-function assertBitgetResponse(response: UnknownRecord) {
+function assertBitgetResponse(value: unknown) {
+  const response = record(value);
   if (text(response.code) !== "00000") {
-    throw new ProviderError(text(response.msg) || "Bitget 인증에 실패했습니다.");
+    const code = text(response.code);
+    throw new ProviderError(
+      `Bitget ${code}: ${text(response.msg) || "조회에 실패했습니다."} (통합 계정은 UTA 관리·거래 읽기 권한을 확인해 주세요.)`,
+      502,
+      code,
+    );
   }
+}
+
+function bitgetNumber(value: unknown, field: string): number {
+  if (value == null || value === "" || !Number.isFinite(Number(value))) {
+    throw new ProviderError(`Bitget 응답의 ${field} 값을 확인할 수 없습니다.`);
+  }
+  return Number(value);
+}
+
+function bitgetPositions(data: unknown, unified: boolean): NormalizedPosition[] {
+  const rows = unified ? record(data).list : data;
+  if (!Array.isArray(rows)) {
+    throw new ProviderError("Bitget 포지션 응답에 목록이 없습니다. 이전 동기화 데이터를 유지합니다.");
+  }
+  return rows.flatMap((item) => {
+    const row = record(item);
+    // total includes quantities frozen by closing orders; available alone can be zero.
+    const amount = bitgetNumber(row.total ?? row.available, "total");
+    if (amount < 0) throw new ProviderError("Bitget 포지션 수량을 확인할 수 없습니다.");
+    if (!amount) return [];
+    const side = text(unified ? row.posSide : row.holdSide).toLowerCase();
+    if (side !== "long" && side !== "short") {
+      throw new ProviderError("Bitget 포지션 방향을 확인할 수 없습니다.");
+    }
+    const markPriceUsd = bitgetNumber(row.markPrice, "markPrice");
+    if (!normalizedSymbol(row.symbol) || markPriceUsd <= 0) {
+      throw new ProviderError("Bitget 포지션 종목 또는 가격을 확인할 수 없습니다.");
+    }
+    return [{
+      symbol: normalizedSymbol(row.symbol).replace(/(USDT|USDC)(-FUTURES)?$/i, ""),
+      venue: "Bitget",
+      side: side === "short" ? "SHORT" as const : "LONG" as const,
+      amount,
+      notionalUsd: Math.abs(numberValue(row.notionalUsd)) || amount * markPriceUsd,
+      entryPriceUsd: bitgetNumber(unified ? row.avgPrice : row.openPriceAvg, "entryPrice"),
+      markPriceUsd,
+      unrealizedPnlUsd: bitgetNumber(unified ? row.unrealisedPnl : row.unrealizedPL, "unrealisedPnl"),
+      liquidationPriceUsd: numberValue(row.liquidationPrice),
+      leverage: numberValue(row.leverage) || 1,
+      marginMode: text(row.marginMode) || "—",
+    }];
+  });
+}
+
+async function syncBitgetUnified(
+  credentials: ProviderCredentials,
+  assetsResponse: UnknownRecord,
+): Promise<ProviderSnapshot> {
+  const assets = record(assetsResponse.data);
+  if (!Array.isArray(assets.assets) || !Number.isFinite(Number(assets.accountEquity)) ||
+      assets.accountEquity == null || assets.accountEquity === "") {
+    throw new ProviderError("Bitget 통합 계정 자산 응답을 확인할 수 없습니다.");
+  }
+  // BL supports linear USDT/USDC perpetuals. Their quantity and PnL units
+  // match NormalizedPosition; inverse Coin-M contracts need a separate adapter.
+  const responses = await Promise.all(["USDT-FUTURES", "USDC-FUTURES"].map(async (category) => {
+    const response = await bitgetGet<UnknownRecord>("/api/v3/position/current-position", credentials, { category });
+    assertBitgetResponse(response);
+    return response;
+  }));
+  const positions = responses.flatMap((response) => bitgetPositions(response.data, true));
+  const holdings: NormalizedHolding[] = assets.assets.flatMap((item) => {
+    const row = record(item);
+    const amount = bitgetNumber(row.equity, "equity");
+    const valueUsd = bitgetNumber(row.usdValue, "usdValue");
+    if (!amount && !valueUsd) return [];
+    return [{
+      symbol: normalizedSymbol(row.coin),
+      venue: "Bitget",
+      account: "Unified account",
+      amount,
+      priceUsd: amount ? valueUsd / amount : 0,
+      valueUsd,
+      category: "collateral" as const,
+    }];
+  });
+  const accountNetUsd = numberValue(assets.accountEquity);
+  // Account equity is authoritative. Shared collateral and unrealised PnL
+  // must only count once, rather than adding legacy spot/futures balances.
+  const adjustment = accountNetUsd - holdings.reduce((sum, item) => sum + item.valueUsd, 0);
+  if (Math.abs(adjustment) > 0.00000001) {
+    holdings.push({
+      symbol: "USDT", venue: "Bitget", account: "Unified equity adjustment",
+      amount: adjustment, priceUsd: 1, valueUsd: adjustment, category: "collateral",
+    });
+  }
+  return {
+    provider: "bitget", accountNetUsd, holdings, positions,
+    warnings: ["Bitget 통합 계정: USDT·USDC 선물을 조회합니다. Coin-M 선물·별도 펀딩 계정은 포함하지 않습니다."],
+    syncedAt: new Date().toISOString(),
+  };
 }
 
 async function syncBitget(
   credentials: ProviderCredentials,
 ): Promise<ProviderSnapshot> {
+  // 25245 explicitly means a Classic account. Auth, permission, WAF and
+  // transport failures must not silently fall back to an empty v2 snapshot.
+  let unifiedAssets: UnknownRecord | undefined;
+  try {
+    unifiedAssets = await bitgetGet<UnknownRecord>("/api/v3/account/assets", credentials);
+    assertBitgetResponse(unifiedAssets);
+  } catch (error) {
+    if (!(error instanceof ProviderError) || error.code !== "25245") throw error;
+    unifiedAssets = undefined;
+  }
+  if (unifiedAssets) return syncBitgetUnified(credentials, unifiedAssets);
+
   const [spot, futures, positionsResponse, tickersResponse] = await Promise.all([
     bitgetGet<UnknownRecord>("/api/v2/spot/account/assets", credentials),
     bitgetGet<UnknownRecord>("/api/v2/mix/account/accounts", credentials, {
       productType: "USDT-FUTURES",
-    }).catch((error) => ({ code: "-1", msg: cleanProviderError(error), data: [] })),
+    }),
     bitgetGet<UnknownRecord>("/api/v2/mix/position/all-position", credentials, {
       productType: "USDT-FUTURES",
       marginCoin: "USDT",
-    }).catch((error) => ({ code: "-1", msg: cleanProviderError(error), data: [] })),
+    }),
     fetchJson<UnknownRecord>("https://api.bitget.com/api/v2/spot/market/tickers"),
   ]);
   assertBitgetResponse(spot);
+  assertBitgetResponse(futures);
+  assertBitgetResponse(positionsResponse);
+  assertBitgetResponse(tickersResponse);
 
   const prices = new Map<string, { price: number; change: number }>();
   for (const item of array(tickersResponse.data)) {
@@ -829,40 +941,14 @@ async function syncBitget(
     }
   }
 
-  const positions: NormalizedPosition[] = [];
-  if (text(positionsResponse.code) === "00000") {
-    for (const item of array(positionsResponse.data)) {
-      const row = record(item);
-      const amount = positive(row.total ?? row.available);
-      if (!amount) continue;
-      const contract = normalizedSymbol(row.symbol);
-      const markPriceUsd = numberValue(row.markPrice);
-      positions.push({
-        symbol: contract.replace(/(USDT|USDC)(-FUTURES)?$/i, ""),
-        venue: "Bitget",
-        side: text(row.holdSide).toLowerCase() === "short" ? "SHORT" : "LONG",
-        amount,
-        notionalUsd: numberValue(row.notionalUsd ?? row.marketPrice) || amount * markPriceUsd,
-        entryPriceUsd: numberValue(row.openPriceAvg),
-        markPriceUsd,
-        unrealizedPnlUsd: numberValue(row.unrealizedPL),
-        liquidationPriceUsd: numberValue(row.liquidationPrice),
-        leverage: numberValue(row.leverage) || 1,
-        marginMode: text(row.marginMode) || "—",
-      });
-    }
-  }
-
-  const warnings: string[] = [];
-  if (text(futures.code) !== "00000") warnings.push("선물 계정 잔고를 불러오지 못했습니다.");
-  if (text(positionsResponse.code) !== "00000") warnings.push("선물 포지션을 불러오지 못했습니다.");
+  const positions = bitgetPositions(positionsResponse.data, false);
 
   return {
     provider: "bitget",
     accountNetUsd: holdings.reduce((sum, item) => sum + item.valueUsd, 0),
     holdings,
     positions,
-    warnings,
+    warnings: [],
     syncedAt: new Date().toISOString(),
   };
 }

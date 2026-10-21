@@ -1,0 +1,63 @@
+# Bitget 통합 계정 포지션 누락 조사
+
+확인일: 2026-10-22 (한국 시간). 기준: `leo00-noob/blackledger`의 `27fe000`.
+
+## 확인된 코드 결함
+
+기존 `syncBitget`은 v2 현물 자산, USDT 선물 자산, USDT 포지션만 조회했다.
+선물 조회 실패를 `data: []`로 치환하고 경고만 남긴 채 성공 스냅샷을 반환했다.
+연결 동기화 경로는 반환된 스냅샷을 저장하므로 기존 포지션도 빈 목록으로 덮일 수 있었다.
+통합 계정의 v3 조회와 응답 구조는 구현되어 있지 않았다.
+
+이는 보고된 증상을 설명하는 코드 경로다. 실제 계정의 오류 응답이나 보유 수량은
+이번 작업에 제공되지 않았으므로 사용자의 실계정에서 재현했다고 주장하지 않는다.
+
+## 공식 근거
+
+1. [v2 → UTA v3 이행 가이드](https://www.bitget.com/docs/classic/uta-api-upgrade-guide)
+   — 기존 키와 서명 방식을 사용할 수 있지만 자산·포지션 API와 필드 이름은 변경된다.
+2. [계정 자산](https://www.bitget.com/legacy-docs/uta/account/Get-Account)
+   — `/api/v3/account/assets`, 계정 USD 평가액 `accountEquity`, 코인별 `assets`,
+   `equity`, `usdValue`를 정의한다. UTA 관리 읽기 권한이 필요하다.
+3. [현재 포지션](https://www.bitget.com/legacy-docs/uta/trade/Get-Position)
+   — `/api/v3/position/current-position`, 필수 `category`, 응답 `data.list`,
+   `posSide`, `avgPrice`, `unrealisedPnl`, `total`을 정의한다.
+   `total`은 주문에 묶인 `frozen` 수량도 포함한다. UTA 거래 읽기 권한이 필요하다.
+4. [오류 코드](https://www.bitget.com/legacy-docs/uta/error-code/restapi)
+   — `25245`는 통합 계정 모드가 아님을 의미한다. `25620`은 권한 오류다.
+5. [계정 설정](https://www.bitget.com/docs/catalog/account/account-settings)
+   — 계정 전환·업그레이드 상태와 UTA 권한을 설명한다.
+6. [UTA 변경 이력](https://www.bitget.com/legacy-docs/uta/changelog)
+   — 현재 포지션의 격리 마진 필드 설명 변경 등을 추적할 수 있다.
+
+## 수정 동작
+
+- v3 자산을 조회해 통합 계정 경로를 사용한다. 명시적 `25245`만 Classic v2로 전환한다.
+  HTTP 오류 응답에서도 API 오류 코드를 보존한다.
+- USDT·USDC 선물의 v3 응답을 BL 표준 포지션으로 변환한다.
+  롱/숏, 양방향 보유, 격리/교차 마진, 주문에 묶인 수량을 유지한다.
+- 공유 담보와 미실현 손익을 구형 현물·선물 잔고와 중복 합산하지 않는다.
+  순자산은 `accountEquity`이며 자산별 평가액과의 차이는 별도 조정 행으로 표시한다.
+- 권한·서명·WAF·통신 오류 및 목록 누락은 동기화를 실패 처리한다.
+  기존 연결 API의 실패 경로가 직전 스냅샷을 유지한다.
+  반면 명시적인 빈 `list: []`는 실제 보유 없음으로 정상 반영한다.
+- Coin-M과 별도 펀딩 계정은 지원 범위에 넣지 않았다. Coin-M은 계약 수량과
+  결제 통화 단위가 달라 별도 변환 검증이 필요하다.
+
+## 검증 및 운영 확인
+
+네트워크 없는 회귀 테스트는 실거래나 실제 API 키를 사용하지 않는다.
+v3 서명, AKE 숏, 주문에 묶인 수량, USDC 양방향 포지션, 손익 부호,
+공유 담보 중복 방지, HTTP 200/400의 Classic 식별, 권한/서명/WAF 오류,
+비정상 응답, 빈 포지션 목록, Classic 포지션 실패를 검증한다.
+
+배포 후 기존 Bitget 연결에서 동기화를 실행하고 Bitget 화면과 열린 포지션의
+방향·수량·평균 진입가·미실현 손익을 대조한다. 조회 시점의 가격 변동은 감안한다.
+권한 오류가 나면 기존 키의 UTA 관리·거래 읽기 권한과 IP 제한을 확인한다.
+쓰기·출금 권한은 필요 없다. 정상적으로 포지션을 청산한 뒤 다음 동기화에서
+목록에서 제거되는지도 확인한다.
+
+자동 테스트 통과는 실계정 조회 및 운영 배포 완료를 의미하지 않는다.
+
+최종 검증: `npm test` 38개 통과(Bitget 신규 18개 포함), 변경 파일 ESLint 통과,
+TypeScript 검사 통과, `npm run build` 프로덕션 빌드 통과.

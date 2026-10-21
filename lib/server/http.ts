@@ -4,6 +4,7 @@ export class ProviderError extends Error {
   constructor(
     message: string,
     public readonly status = 502,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ProviderError";
@@ -42,7 +43,11 @@ export async function fetchJson<T>(
         nested?.message ??
         nested?.name ??
         `HTTP ${response.status}`;
-      throw new ProviderError(String(detail), response.status);
+      throw new ProviderError(
+        String(detail),
+        response.status,
+        record?.code == null ? undefined : String(record.code),
+      );
     }
     return parsed as T;
   } catch (error) {
